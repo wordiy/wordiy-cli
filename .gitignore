@@ -1,0 +1,16 @@
+# Rust / Cargo build output
+/target/
+
+# rustfmt backup files
+**/*.rs.bk
+
+# Windows debug symbols
+*.pdb
+
+# NOTE: Cargo.lock IS tracked — wordiy-cli is a binary/application, so the
+# lockfile is committed for reproducible builds. (Only ignore it for libraries.)
+
+# OS / editor cruft
+.DS_Store
+*.swp
+*~

@@ -1,0 +1,13 @@
+[package]
+name = "wordiy-cli"
+version = "0.1.0"
+edition = "2021"
+description = "CLI for the wordiy translation platform"
+license = "MIT"
+
+[[bin]]
+name = "wordiy"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive", "env"] }
