@@ -5,6 +5,7 @@
 //! application errors return from `run` and map to exit 1.
 
 mod cli;
+mod client;
 mod commands;
 mod context;
 mod error;
@@ -17,10 +18,16 @@ use crate::context::Context;
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    let verbose = cli.global.verbose;
     match run(cli) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
             eprintln!("error: {err}");
+            if verbose {
+                if let Some(detail) = err.detail() {
+                    eprintln!("       {detail}");
+                }
+            }
             ExitCode::from(err.exit_code())
         }
     }
