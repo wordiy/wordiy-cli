@@ -2,32 +2,29 @@
 //!
 //! Resolved configuration, credentials, and (later) an authed HTTP client live
 //! here rather than in the parsed args, so each subcommand receives ready-to-use
-//! dependencies. Today it is a thin placeholder carrying the global flags;
-//! config-file loading, credential resolution, and the API client are added in
-//! subsequent steps.
+//! dependencies. Today it carries the resolved base URL + API key; config-file
+//! loading and the export client are added in subsequent steps.
 
 use crate::cli::GlobalArgs;
 
-/// Placeholder default until config loading + a real default are wired in.
-pub const DEFAULT_API_URL: &str = "https://app.wordiy.io";
+/// Default API base URL when neither `--api-url` nor the environment overrides it.
+pub const DEFAULT_API_URL: &str = "https://app.wordiy.dev";
 
 #[derive(Debug)]
 pub struct Context {
     pub api_url: String,
-    /// Consumed when the authed HTTP client is built (step 3); unused in the skeleton.
+    /// Consumed when the export client is built (Phase 2); unused for now.
     #[allow(dead_code)]
     pub api_key: Option<String>,
-    pub project_id: Option<u32>,
-    pub branch: Option<String>,
     pub verbose: bool,
 }
 
 impl Context {
     /// Build a context from the parsed global flags.
     ///
-    /// Precedence (CLI > env > config file > stored credential > default) is only
-    /// partially realised here: clap already folds env vars into the flags, and
-    /// the remaining layers join once config + credential stores exist.
+    /// Precedence (CLI > env > config file > default) is only partially realised
+    /// here: clap already folds env vars into the flags, and the config layer joins
+    /// once config loading exists.
     pub fn from_global(global: &GlobalArgs) -> Self {
         Self {
             api_url: global
@@ -35,8 +32,6 @@ impl Context {
                 .clone()
                 .unwrap_or_else(|| DEFAULT_API_URL.to_string()),
             api_key: global.api_key.clone(),
-            project_id: global.project_id,
-            branch: global.branch.clone(),
             verbose: global.verbose,
         }
     }

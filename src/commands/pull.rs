@@ -10,10 +10,7 @@ use crate::error::{fail, Result};
 
 pub fn run(ctx: &Context, args: &PullArgs) -> Result<()> {
     if ctx.verbose {
-        eprintln!(
-            "[debug] api_url={} project_id={:?} branch={:?}",
-            ctx.api_url, ctx.project_id, ctx.branch
-        );
+        eprintln!("[debug] api_url={}", ctx.api_url);
     }
 
     // A destination is mandatory. Once config loading exists this also accepts
@@ -22,16 +19,15 @@ pub fn run(ctx: &Context, args: &PullArgs) -> Result<()> {
         return fail("Missing --path: no destination directory was provided");
     };
 
+    let states: Vec<&str> = args.states.iter().map(|s| s.as_wire()).collect();
     println!(
         "pull: not yet implemented (skeleton) — path={} format={} languages={:?} \
-         states={:?} namespaces={:?} empty_dir={} watch={}",
+         states={:?} empty_dir={}",
         path.display(),
-        args.format,
+        args.format.as_wire(),
         args.languages,
-        args.states,
-        args.namespaces,
+        states,
         args.empty_dir,
-        args.watch,
     );
 
     Ok(())
@@ -45,10 +41,8 @@ mod tests {
 
     fn ctx() -> Context {
         Context {
-            api_url: "https://app.wordiy.io".into(),
+            api_url: "https://app.wordiy.dev".into(),
             api_key: None,
-            project_id: None,
-            branch: None,
             verbose: false,
         }
     }

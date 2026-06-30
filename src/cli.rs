@@ -3,10 +3,14 @@
 //! `GlobalArgs` are marked `global = true` so they may appear before or after the
 //! subcommand. They are kept separate from per-command args and resolved into a
 //! [`crate::context::Context`].
+//!
+//! The surface tracks the v1 export contract: the project is bound to the API key
+//! (no project id), and only the format + `languages` + `filterState` filters take
+//! effect, so unsupported flags are intentionally absent until the backend grows them.
 
 use std::path::PathBuf;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
 /// Top-level parser.
 #[derive(Debug, Parser)]
@@ -22,21 +26,13 @@ pub struct Cli {
 /// Flags shared by every subcommand.
 #[derive(Debug, Args)]
 pub struct GlobalArgs {
-    /// API key (project key or personal access token).
+    /// API key for the project (e.g. a `srv_` server key).
     #[arg(long, short = 'k', global = true, env = "WORDIY_API_KEY")]
     pub api_key: Option<String>,
-
-    /// Project ID (required for a personal access token; derived from a project key).
-    #[arg(long = "project-id", short = 'p', global = true)]
-    pub project_id: Option<u32>,
 
     /// API base URL.
     #[arg(long = "api-url", short = 'u', global = true, env = "WORDIY_API_URL")]
     pub api_url: Option<String>,
-
-    /// Project branch.
-    #[arg(long, short = 'b', global = true, env = "WORDIY_BRANCH")]
-    pub branch: Option<String>,
 
     /// Path to a config file (defaults to auto-discovery of `.wordiyrc`).
     #[arg(long, short = 'c', global = true)]
@@ -57,12 +53,48 @@ pub enum Command {
     Pull(PullArgs),
 }
 
+/// Export container format. v1 supports Android resources XML only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum Format {
+    #[value(name = "ANDROID_XML")]
+    AndroidXml,
+}
+
+impl Format {
+    /// The value sent in the export request body.
+    pub fn as_wire(self) -> &'static str {
+        match self {
+            Format::AndroidXml => "ANDROID_XML",
+        }
+    }
+}
+
+/// Translation state filter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum State {
+    #[value(name = "UNTRANSLATED")]
+    Untranslated,
+    #[value(name = "TRANSLATED")]
+    Translated,
+    #[value(name = "REVIEWED")]
+    Reviewed,
+    #[value(name = "DISABLED")]
+    Disabled,
+}
+
+impl State {
+    /// The value sent in the export request body.
+    pub fn as_wire(self) -> &'static str {
+        match self {
+            State::Untranslated => "UNTRANSLATED",
+            State::Translated => "TRANSLATED",
+            State::Reviewed => "REVIEWED",
+            State::Disabled => "DISABLED",
+        }
+    }
+}
+
 /// Arguments for `wordiy pull`.
-///
-/// The full flag surface is declared now so `--help` and parsing are complete;
-/// the export + unzip pipeline is wired in a later step. Domain enums (format,
-/// state) are still plain strings here and become typed enums when the request
-/// is built.
 #[derive(Debug, Args)]
 pub struct PullArgs {
     /// Destination directory for the downloaded files.
@@ -73,45 +105,18 @@ pub struct PullArgs {
     #[arg(long, short = 'l')]
     pub languages: Vec<String>,
 
-    /// Translation states to include (repeatable): UNTRANSLATED | TRANSLATED | REVIEWED.
+    /// Translation states to include (repeatable); omit for the server default
+    /// (translated + reviewed).
     #[arg(long, short = 's')]
-    pub states: Vec<String>,
+    pub states: Vec<State>,
 
-    /// Structure delimiter for nested keys (`''` disables nesting).
-    #[arg(long, short = 'd')]
-    pub delimiter: Option<String>,
-
-    /// Namespaces to export (repeatable); empty string targets the default namespace.
-    #[arg(long, short = 'n')]
-    pub namespaces: Vec<String>,
-
-    /// Only export keys having these tags (repeatable).
-    #[arg(long, short = 't')]
-    pub tags: Vec<String>,
-
-    /// Exclude keys having these tags (repeatable).
-    #[arg(long = "exclude-tags")]
-    pub exclude_tags: Vec<String>,
-
-    /// Export arrays as arrays where the format supports it.
-    #[arg(long = "support-arrays")]
-    pub support_arrays: bool,
+    /// Export format.
+    #[arg(long, default_value = "ANDROID_XML")]
+    pub format: Format,
 
     /// Empty the destination directory before extracting (destructive).
     #[arg(long = "empty-dir")]
     pub empty_dir: bool,
-
-    /// Server-side file layout template (e.g. `{namespace}/{languageTag}.{extension}`).
-    #[arg(long = "file-structure-template")]
-    pub file_structure_template: Option<String>,
-
-    /// Localization format.
-    #[arg(long, default_value = "JSON_WORDIY")]
-    pub format: String,
-
-    /// Keep running and re-pull on remote changes.
-    #[arg(long)]
-    pub watch: bool,
 }
 
 #[cfg(test)]
@@ -126,31 +131,35 @@ mod tests {
 
     #[test]
     fn parses_pull_with_globals_after_subcommand() {
-        let cli = Cli::try_parse_from([
-            "wordiy", "pull", "--path", "./i18n", "--project-id", "42", "--api-key", "pk_x",
-        ])
-        .expect("should parse");
+        let cli = Cli::try_parse_from(["wordiy", "pull", "--path", "./i18n", "--api-key", "srv_x"])
+            .expect("should parse");
 
-        assert_eq!(cli.global.project_id, Some(42));
-        assert_eq!(cli.global.api_key.as_deref(), Some("pk_x"));
+        assert_eq!(cli.global.api_key.as_deref(), Some("srv_x"));
 
         let Command::Pull(args) = cli.command;
         assert_eq!(args.path.as_deref(), Some(std::path::Path::new("./i18n")));
-        assert_eq!(args.format, "JSON_WORDIY"); // default
+        assert_eq!(args.format, Format::AndroidXml); // default
         assert!(!args.empty_dir);
     }
 
     #[test]
-    fn parses_pull_filters() {
+    fn parses_languages_states_and_format() {
         let cli = Cli::try_parse_from([
-            "wordiy", "pull", "-l", "en", "-l", "fr", "--format", "JSON_ICU", "--empty-dir",
+            "wordiy", "pull", "-l", "en", "-l", "ar", "-s", "TRANSLATED", "-s", "REVIEWED",
+            "--format", "ANDROID_XML", "--empty-dir",
         ])
         .expect("should parse");
 
         let Command::Pull(args) = cli.command;
-        assert_eq!(args.languages, vec!["en", "fr"]);
-        assert_eq!(args.format, "JSON_ICU");
+        assert_eq!(args.languages, vec!["en", "ar"]);
+        assert_eq!(args.states, vec![State::Translated, State::Reviewed]);
+        assert_eq!(args.format, Format::AndroidXml);
         assert!(args.empty_dir);
-        assert!(!args.support_arrays);
+    }
+
+    #[test]
+    fn rejects_unsupported_format() {
+        // Only ANDROID_XML is accepted in v1.
+        assert!(Cli::try_parse_from(["wordiy", "pull", "--format", "JSON_ICU"]).is_err());
     }
 }
