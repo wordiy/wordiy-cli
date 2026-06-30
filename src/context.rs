@@ -8,7 +8,10 @@
 use crate::cli::GlobalArgs;
 
 /// Default API base URL when neither `--api-url` nor the environment overrides it.
-pub const DEFAULT_API_URL: &str = "https://app.wordiy.dev";
+///
+/// TODO: temporary dev default for local testing — switch to `https://app.wordiy.dev`
+/// before release.
+pub const DEFAULT_API_URL: &str = "http://localhost:3001";
 
 #[derive(Debug)]
 pub struct Context {
