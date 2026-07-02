@@ -54,8 +54,9 @@ pub enum Command {
 }
 
 /// Export container format. v1 supports Android resources XML only.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, ValueEnum)]
 pub enum Format {
+    #[default]
     #[value(name = "ANDROID_XML")]
     AndroidXml,
 }

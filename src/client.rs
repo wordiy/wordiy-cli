@@ -21,6 +21,19 @@ const MAX_RESPONSE_BYTES: u64 = 64 * 1024 * 1024;
 /// change (e.g. `/api/v2`) is a single edit rather than a per-endpoint sweep.
 const API_BASE_PATH: &str = "/api/v1";
 
+/// The user's export selection — the semantic inputs to an export request, grouped so
+/// the request is built from named fields instead of positional arguments. Borrows its
+/// inputs; construct it inline, typically with `..Default::default()`.
+#[derive(Debug, Default)]
+pub struct ExportQuery<'a> {
+    pub format: Format,
+    pub languages: &'a [String],
+    pub states: &'a [State],
+    pub tags: &'a [String],
+    pub exclude_tags: &'a [String],
+    pub key_prefix: Option<&'a str>,
+}
+
 /// Body of the export request. Serialized as camelCase; empty filters are omitted
 /// so the server applies its defaults.
 #[derive(Debug, Serialize)]
@@ -40,21 +53,14 @@ pub struct ExportRequest {
 }
 
 impl ExportRequest {
-    pub fn new(
-        format: Format,
-        languages: &[String],
-        states: &[State],
-        tags: &[String],
-        exclude_tags: &[String],
-        key_prefix: Option<&str>,
-    ) -> Self {
+    pub fn new(query: ExportQuery) -> Self {
         Self {
-            export_format: format.as_wire().to_string(),
-            languages: languages.to_vec(),
-            filter_state: states.iter().map(|s| s.as_wire().to_string()).collect(),
-            filter_tag_in: tags.to_vec(),
-            filter_tag_not_in: exclude_tags.to_vec(),
-            filter_key_prefix: key_prefix.map(str::to_string),
+            export_format: query.format.as_wire().to_string(),
+            languages: query.languages.to_vec(),
+            filter_state: query.states.iter().map(|s| s.as_wire().to_string()).collect(),
+            filter_tag_in: query.tags.to_vec(),
+            filter_tag_not_in: query.exclude_tags.to_vec(),
+            filter_key_prefix: query.key_prefix.map(str::to_string),
         }
     }
 
@@ -166,21 +172,21 @@ mod tests {
 
     #[test]
     fn serializes_minimal_request_as_camelcase() {
-        let req = ExportRequest::new(Format::AndroidXml, &[], &[], &[], &[], None);
+        let req = ExportRequest::new(ExportQuery::default());
         // No filters → only exportFormat is present.
         assert_eq!(req.to_json(), r#"{"exportFormat":"ANDROID_XML"}"#);
     }
 
     #[test]
     fn serializes_filters_when_present() {
-        let req = ExportRequest::new(
-            Format::AndroidXml,
-            &["en".to_string(), "ar".to_string()],
-            &[State::Translated, State::Reviewed],
-            &["mobile".to_string()],
-            &["legacy".to_string()],
-            Some("home_"),
-        );
+        let req = ExportRequest::new(ExportQuery {
+            languages: &["en".to_string(), "ar".to_string()],
+            states: &[State::Translated, State::Reviewed],
+            tags: &["mobile".to_string()],
+            exclude_tags: &["legacy".to_string()],
+            key_prefix: Some("home_"),
+            ..Default::default()
+        });
         assert_eq!(
             req.to_json(),
             r#"{"exportFormat":"ANDROID_XML","languages":["en","ar"],"filterState":["TRANSLATED","REVIEWED"],"filterTagIn":["mobile"],"filterTagNotIn":["legacy"],"filterKeyPrefix":"home_"}"#
@@ -189,15 +195,19 @@ mod tests {
 
     #[test]
     fn serializes_tags_only() {
-        let req =
-            ExportRequest::new(Format::AndroidXml, &[], &[], &["checkout".to_string()], &[], None);
+        let req = ExportRequest::new(ExportQuery {
+            tags: &["checkout".to_string()],
+            ..Default::default()
+        });
         assert_eq!(req.to_json(), r#"{"exportFormat":"ANDROID_XML","filterTagIn":["checkout"]}"#);
     }
 
     #[test]
     fn serializes_exclude_tags_only() {
-        let req =
-            ExportRequest::new(Format::AndroidXml, &[], &[], &[], &["legacy".to_string()], None);
+        let req = ExportRequest::new(ExportQuery {
+            exclude_tags: &["legacy".to_string()],
+            ..Default::default()
+        });
         assert_eq!(
             req.to_json(),
             r#"{"exportFormat":"ANDROID_XML","filterTagNotIn":["legacy"]}"#
@@ -206,7 +216,10 @@ mod tests {
 
     #[test]
     fn serializes_key_prefix_only() {
-        let req = ExportRequest::new(Format::AndroidXml, &[], &[], &[], &[], Some("home_"));
+        let req = ExportRequest::new(ExportQuery {
+            key_prefix: Some("home_"),
+            ..Default::default()
+        });
         assert_eq!(
             req.to_json(),
             r#"{"exportFormat":"ANDROID_XML","filterKeyPrefix":"home_"}"#
