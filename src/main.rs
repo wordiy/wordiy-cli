@@ -9,6 +9,7 @@ mod client;
 mod commands;
 mod context;
 mod error;
+mod extract;
 
 use clap::Parser;
 use std::process::ExitCode;

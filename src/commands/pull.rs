@@ -1,9 +1,7 @@
 //! `wordiy pull` — download translations into a local directory.
 //!
-//! This stage wires the export request: resolve the destination + API key, build
-//! the request, and fetch the ZIP bytes via an [`ExportClient`]. Writing the
-//! extracted files to disk lands in the next step; for now it reports the fetch so
-//! the request path can be exercised against a running server.
+//! Resolves the destination + API key, fetches the export ZIP via an
+//! [`ExportClient`], and extracts its files into `--path`.
 
 use std::path::Path;
 
@@ -11,6 +9,7 @@ use crate::cli::PullArgs;
 use crate::client::{ExportClient, ExportRequest, HttpExportClient};
 use crate::context::Context;
 use crate::error::{fail, Result};
+use crate::extract::extract_zip;
 
 pub fn run(ctx: &Context, args: &PullArgs) -> Result<()> {
     // A destination is mandatory. Once config loading exists this also accepts
@@ -23,29 +22,17 @@ pub fn run(ctx: &Context, args: &PullArgs) -> Result<()> {
         return fail("Missing API key: pass --api-key or set WORDIY_API_KEY");
     };
 
-    let client = HttpExportClient::new(ctx.api_url.clone(), api_key);
-    fetch(ctx, args, path, &client)
+    let client = HttpExportClient::new(ctx.api_url.clone(), api_key, ctx.verbose);
+    pull_into(args, path, &client)
 }
 
-/// Build the request, fetch the ZIP, and report. Split from [`run`] so it can be
-/// unit-tested with a fake [`ExportClient`] (no network).
-fn fetch(ctx: &Context, args: &PullArgs, path: &Path, client: &dyn ExportClient) -> Result<()> {
+/// Fetch + extract. Split from [`run`] so it can be unit-tested with a fake
+/// [`ExportClient`] (no network).
+fn pull_into(args: &PullArgs, path: &Path, client: &dyn ExportClient) -> Result<()> {
     let req = ExportRequest::new(args.format, &args.languages, &args.states);
-
-    if ctx.verbose {
-        eprintln!(
-            "[debug] POST {}/api/v1/project/export body={}",
-            ctx.api_url,
-            req.to_json()
-        );
-    }
-
     let bytes = client.export(&req)?;
-    println!(
-        "Fetched {} bytes of export data for {} — file extraction lands in the next step.",
-        bytes.len(),
-        path.display()
-    );
+    let count = extract_zip(&bytes, path, args.empty_dir)?;
+    println!("Pulled {count} file(s) into {}", path.display());
     Ok(())
 }
 
@@ -54,6 +41,7 @@ mod tests {
     use super::*;
     use crate::cli::{Cli, Command};
     use clap::Parser;
+    use std::io::{Cursor, Write};
 
     fn ctx() -> Context {
         Context {
@@ -68,12 +56,24 @@ mod tests {
         args
     }
 
-    /// Returns canned bytes without any network access.
+    /// Returns canned ZIP bytes without any network access.
     struct FakeClient(Vec<u8>);
     impl ExportClient for FakeClient {
         fn export(&self, _req: &ExportRequest) -> Result<Vec<u8>> {
             Ok(self.0.clone())
         }
+    }
+
+    fn one_file_zip(name: &str, data: &[u8]) -> Vec<u8> {
+        use zip::write::{SimpleFileOptions, ZipWriter};
+        let mut cursor = Cursor::new(Vec::new());
+        {
+            let mut zw = ZipWriter::new(&mut cursor);
+            zw.start_file(name, SimpleFileOptions::default()).unwrap();
+            zw.write_all(data).unwrap();
+            zw.finish().unwrap();
+        }
+        cursor.into_inner()
     }
 
     #[test]
@@ -90,9 +90,15 @@ mod tests {
     }
 
     #[test]
-    fn fetch_succeeds_with_a_fake_client() {
-        let fake = FakeClient(b"PK\x03\x04 zip bytes".to_vec());
-        let args = pull_args(&["wordiy", "pull", "--path", "./i18n"]);
-        fetch(&ctx(), &args, Path::new("./i18n"), &fake).expect("should fetch");
+    fn pull_into_writes_files_with_a_fake_client() {
+        let fake = FakeClient(one_file_zip("values/strings.xml", b"<resources/>"));
+        let args = pull_args(&["wordiy", "pull"]);
+        let dir = std::env::temp_dir().join(format!("wordiy_pull_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+
+        pull_into(&args, &dir, &fake).expect("should pull");
+
+        assert!(dir.join("values/strings.xml").exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

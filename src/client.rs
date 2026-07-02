@@ -2,7 +2,7 @@
 //!
 //! `pull` depends on the [`ExportClient`] trait, not the concrete HTTP type, so the
 //! command can be unit-tested with a fake. [`HttpExportClient`] is the real
-//! implementation: it `POST`s the [`ExportRequest`] to `/api/v1/project/export`
+//! implementation: it `POST`s the [`ExportRequest`] to the project export endpoint
 //! with the `Api-Key` header and returns the raw ZIP bytes, mapping a `{code,
 //! params}` error envelope to a typed [`CliError`].
 
@@ -12,6 +12,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::cli::{Format, State};
 use crate::error::{CliError, Result};
+
+/// Upper bound on the export response we will buffer, so a hostile/MITM'd server
+/// can't exhaust memory with an unbounded body.
+const MAX_RESPONSE_BYTES: u64 = 64 * 1024 * 1024;
+
+/// Path prefix shared by every v1 API endpoint, defined once so a version/prefix
+/// change (e.g. `/api/v2`) is a single edit rather than a per-endpoint sweep.
+const API_BASE_PATH: &str = "/api/v1";
 
 /// Body of the export request. Serialized as camelCase; empty filters are omitted
 /// so the server applies its defaults.
@@ -75,27 +83,37 @@ fn friendly_message(status: u16, code: &str) -> String {
 pub struct HttpExportClient {
     base_url: String,
     api_key: String,
+    verbose: bool,
 }
 
 impl HttpExportClient {
-    pub fn new(base_url: String, api_key: String) -> Self {
-        Self { base_url, api_key }
+    pub fn new(base_url: String, api_key: String, verbose: bool) -> Self {
+        Self {
+            base_url,
+            api_key,
+            verbose,
+        }
     }
 
-    fn export_url(&self) -> String {
-        format!(
-            "{}/api/v1/project/export",
-            self.base_url.trim_end_matches('/')
-        )
+    /// Absolute URL for an endpoint path such as `/project/export`. The base URL and
+    /// the API version prefix ([`API_BASE_PATH`]) are joined here, so each endpoint
+    /// names only its own resource path.
+    fn url(&self, path: &str) -> String {
+        format!("{}{API_BASE_PATH}{path}", self.base_url.trim_end_matches('/'))
     }
 }
 
 impl ExportClient for HttpExportClient {
     fn export(&self, req: &ExportRequest) -> Result<Vec<u8>> {
+        let url = self.url("/project/export");
+        if self.verbose {
+            eprintln!("[debug] POST {url} body={}", req.to_json());
+        }
+
         let body = serde_json::to_vec(req)
             .map_err(|e| CliError::Message(format!("could not encode the request: {e}")))?;
 
-        match ureq::post(&self.export_url())
+        match ureq::post(&url)
             .set("Api-Key", &self.api_key)
             .set("Content-Type", "application/json")
             .send_bytes(&body)
@@ -103,8 +121,12 @@ impl ExportClient for HttpExportClient {
             Ok(resp) => {
                 let mut buf = Vec::new();
                 resp.into_reader()
+                    .take(MAX_RESPONSE_BYTES + 1)
                     .read_to_end(&mut buf)
                     .map_err(|e| CliError::Transport(e.to_string()))?;
+                if buf.len() as u64 > MAX_RESPONSE_BYTES {
+                    return Err(CliError::Transport("export response too large".into()));
+                }
                 Ok(buf)
             }
             // 4xx/5xx with a body: parse the typed envelope.
@@ -164,8 +186,8 @@ mod tests {
     }
 
     #[test]
-    fn url_joins_without_double_slash() {
-        let c = HttpExportClient::new("http://localhost:3001/".to_string(), "srv_x".to_string());
-        assert_eq!(c.export_url(), "http://localhost:3001/api/v1/project/export");
+    fn url_joins_base_prefix_and_path() {
+        let c = HttpExportClient::new("http://localhost:3001/".to_string(), "srv_x".into(), false);
+        assert_eq!(c.url("/project/export"), "http://localhost:3001/api/v1/project/export");
     }
 }
