@@ -29,7 +29,13 @@ pub fn run(ctx: &Context, args: &PullArgs) -> Result<()> {
 /// Fetch + extract. Split from [`run`] so it can be unit-tested with a fake
 /// [`ExportClient`] (no network).
 fn pull_into(args: &PullArgs, path: &Path, client: &dyn ExportClient) -> Result<()> {
-    let req = ExportRequest::new(args.format, &args.languages, &args.states, &args.tags);
+    let req = ExportRequest::new(
+        args.format,
+        &args.languages,
+        &args.states,
+        &args.tags,
+        &args.exclude_tags,
+    );
     let bytes = client.export(&req)?;
     let count = extract_zip(&bytes, path, args.empty_dir)?;
     println!("Pulled {count} file(s) into {}", path.display());

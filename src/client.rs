@@ -33,15 +33,24 @@ pub struct ExportRequest {
     filter_state: Vec<String>,
     #[serde(rename = "filterTagIn", skip_serializing_if = "Vec::is_empty")]
     filter_tag_in: Vec<String>,
+    #[serde(rename = "filterTagNotIn", skip_serializing_if = "Vec::is_empty")]
+    filter_tag_not_in: Vec<String>,
 }
 
 impl ExportRequest {
-    pub fn new(format: Format, languages: &[String], states: &[State], tags: &[String]) -> Self {
+    pub fn new(
+        format: Format,
+        languages: &[String],
+        states: &[State],
+        tags: &[String],
+        exclude_tags: &[String],
+    ) -> Self {
         Self {
             export_format: format.as_wire().to_string(),
             languages: languages.to_vec(),
             filter_state: states.iter().map(|s| s.as_wire().to_string()).collect(),
             filter_tag_in: tags.to_vec(),
+            filter_tag_not_in: exclude_tags.to_vec(),
         }
     }
 
@@ -155,7 +164,7 @@ mod tests {
 
     #[test]
     fn serializes_minimal_request_as_camelcase() {
-        let req = ExportRequest::new(Format::AndroidXml, &[], &[], &[]);
+        let req = ExportRequest::new(Format::AndroidXml, &[], &[], &[], &[]);
         // No filters → only exportFormat is present.
         assert_eq!(req.to_json(), r#"{"exportFormat":"ANDROID_XML"}"#);
     }
@@ -167,17 +176,27 @@ mod tests {
             &["en".to_string(), "ar".to_string()],
             &[State::Translated, State::Reviewed],
             &["mobile".to_string()],
+            &["legacy".to_string()],
         );
         assert_eq!(
             req.to_json(),
-            r#"{"exportFormat":"ANDROID_XML","languages":["en","ar"],"filterState":["TRANSLATED","REVIEWED"],"filterTagIn":["mobile"]}"#
+            r#"{"exportFormat":"ANDROID_XML","languages":["en","ar"],"filterState":["TRANSLATED","REVIEWED"],"filterTagIn":["mobile"],"filterTagNotIn":["legacy"]}"#
         );
     }
 
     #[test]
     fn serializes_tags_only() {
-        let req = ExportRequest::new(Format::AndroidXml, &[], &[], &["checkout".to_string()]);
+        let req = ExportRequest::new(Format::AndroidXml, &[], &[], &["checkout".to_string()], &[]);
         assert_eq!(req.to_json(), r#"{"exportFormat":"ANDROID_XML","filterTagIn":["checkout"]}"#);
+    }
+
+    #[test]
+    fn serializes_exclude_tags_only() {
+        let req = ExportRequest::new(Format::AndroidXml, &[], &[], &[], &["legacy".to_string()]);
+        assert_eq!(
+            req.to_json(),
+            r#"{"exportFormat":"ANDROID_XML","filterTagNotIn":["legacy"]}"#
+        );
     }
 
     #[test]
