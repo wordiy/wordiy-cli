@@ -35,6 +35,7 @@ fn pull_into(args: &PullArgs, path: &Path, client: &dyn ExportClient) -> Result<
         &args.states,
         &args.tags,
         &args.exclude_tags,
+        args.key_prefix.as_deref(),
     );
     let bytes = client.export(&req)?;
     let count = extract_zip(&bytes, path, args.empty_dir)?;

@@ -120,6 +120,11 @@ pub struct PullArgs {
     #[arg(long = "exclude-tags")]
     pub exclude_tags: Vec<String>,
 
+    /// Only export keys whose name starts with this prefix (anchored,
+    /// case-sensitive, literal — `_`/`%` are not wildcards).
+    #[arg(long = "key-prefix")]
+    pub key_prefix: Option<String>,
+
     /// Export format.
     #[arg(long, default_value = "ANDROID_XML")]
     pub format: Format,
@@ -156,8 +161,8 @@ mod tests {
     fn parses_pull_filters() {
         let cli = Cli::try_parse_from([
             "wordiy", "pull", "-l", "en", "-l", "ar", "-s", "TRANSLATED", "-s", "REVIEWED",
-            "-t", "checkout", "--exclude-tags", "legacy", "--format", "ANDROID_XML",
-            "--empty-dir",
+            "-t", "checkout", "--exclude-tags", "legacy", "--key-prefix", "home_",
+            "--format", "ANDROID_XML", "--empty-dir",
         ])
         .expect("should parse");
 
@@ -166,6 +171,7 @@ mod tests {
         assert_eq!(args.states, vec![State::Translated, State::Reviewed]);
         assert_eq!(args.tags, vec!["checkout"]);
         assert_eq!(args.exclude_tags, vec!["legacy"]);
+        assert_eq!(args.key_prefix.as_deref(), Some("home_"));
         assert_eq!(args.format, Format::AndroidXml);
         assert!(args.empty_dir);
     }

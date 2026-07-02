@@ -35,6 +35,8 @@ pub struct ExportRequest {
     filter_tag_in: Vec<String>,
     #[serde(rename = "filterTagNotIn", skip_serializing_if = "Vec::is_empty")]
     filter_tag_not_in: Vec<String>,
+    #[serde(rename = "filterKeyPrefix", skip_serializing_if = "Option::is_none")]
+    filter_key_prefix: Option<String>,
 }
 
 impl ExportRequest {
@@ -44,6 +46,7 @@ impl ExportRequest {
         states: &[State],
         tags: &[String],
         exclude_tags: &[String],
+        key_prefix: Option<&str>,
     ) -> Self {
         Self {
             export_format: format.as_wire().to_string(),
@@ -51,6 +54,7 @@ impl ExportRequest {
             filter_state: states.iter().map(|s| s.as_wire().to_string()).collect(),
             filter_tag_in: tags.to_vec(),
             filter_tag_not_in: exclude_tags.to_vec(),
+            filter_key_prefix: key_prefix.map(str::to_string),
         }
     }
 
@@ -78,9 +82,7 @@ fn friendly_message(status: u16, code: &str) -> String {
         "request_parse_error" => {
             "the export request was rejected — check the format and parameters".to_string()
         }
-        "no_exported_result" => {
-            "no translations matched the requested languages/states".to_string()
-        }
+        "no_exported_result" => "no translations matched the requested filters".to_string(),
         "unauthenticated" => "missing API key — pass --api-key or set WORDIY_API_KEY".to_string(),
         "invalid_api_key" => "the API key is invalid".to_string(),
         "key_type_not_authorized" => {
@@ -164,7 +166,7 @@ mod tests {
 
     #[test]
     fn serializes_minimal_request_as_camelcase() {
-        let req = ExportRequest::new(Format::AndroidXml, &[], &[], &[], &[]);
+        let req = ExportRequest::new(Format::AndroidXml, &[], &[], &[], &[], None);
         // No filters → only exportFormat is present.
         assert_eq!(req.to_json(), r#"{"exportFormat":"ANDROID_XML"}"#);
     }
@@ -177,25 +179,37 @@ mod tests {
             &[State::Translated, State::Reviewed],
             &["mobile".to_string()],
             &["legacy".to_string()],
+            Some("home_"),
         );
         assert_eq!(
             req.to_json(),
-            r#"{"exportFormat":"ANDROID_XML","languages":["en","ar"],"filterState":["TRANSLATED","REVIEWED"],"filterTagIn":["mobile"],"filterTagNotIn":["legacy"]}"#
+            r#"{"exportFormat":"ANDROID_XML","languages":["en","ar"],"filterState":["TRANSLATED","REVIEWED"],"filterTagIn":["mobile"],"filterTagNotIn":["legacy"],"filterKeyPrefix":"home_"}"#
         );
     }
 
     #[test]
     fn serializes_tags_only() {
-        let req = ExportRequest::new(Format::AndroidXml, &[], &[], &["checkout".to_string()], &[]);
+        let req =
+            ExportRequest::new(Format::AndroidXml, &[], &[], &["checkout".to_string()], &[], None);
         assert_eq!(req.to_json(), r#"{"exportFormat":"ANDROID_XML","filterTagIn":["checkout"]}"#);
     }
 
     #[test]
     fn serializes_exclude_tags_only() {
-        let req = ExportRequest::new(Format::AndroidXml, &[], &[], &[], &["legacy".to_string()]);
+        let req =
+            ExportRequest::new(Format::AndroidXml, &[], &[], &[], &["legacy".to_string()], None);
         assert_eq!(
             req.to_json(),
             r#"{"exportFormat":"ANDROID_XML","filterTagNotIn":["legacy"]}"#
+        );
+    }
+
+    #[test]
+    fn serializes_key_prefix_only() {
+        let req = ExportRequest::new(Format::AndroidXml, &[], &[], &[], &[], Some("home_"));
+        assert_eq!(
+            req.to_json(),
+            r#"{"exportFormat":"ANDROID_XML","filterKeyPrefix":"home_"}"#
         );
     }
 
