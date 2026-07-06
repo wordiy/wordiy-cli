@@ -9,7 +9,7 @@ use crate::cli::PullArgs;
 use crate::client::{ExportClient, ExportQuery, ExportRequest, HttpExportClient};
 use crate::context::Context;
 use crate::error::{fail, Result};
-use crate::extract::extract_zip;
+use crate::extract::{check_path_not_a_file, extract_zip};
 
 pub fn run(ctx: &Context, args: &PullArgs) -> Result<()> {
     // A destination is mandatory. Once config loading exists this also accepts
@@ -17,6 +17,7 @@ pub fn run(ctx: &Context, args: &PullArgs) -> Result<()> {
     let Some(path) = args.path.as_deref() else {
         return fail("Missing --path: no destination directory was provided");
     };
+    check_path_not_a_file(path)?;
 
     let Some(api_key) = ctx.api_key.clone() else {
         return fail("Missing API key: pass --api-key or set WORDIY_API_KEY");
@@ -94,6 +95,16 @@ mod tests {
         let args = pull_args(&["wordiy", "pull", "--path", "./i18n"]);
         let err = run(&ctx(), &args).expect_err("needs a key");
         assert_eq!(err.exit_code(), 1);
+    }
+
+    #[test]
+    fn errors_when_path_is_an_existing_file() {
+        let file = std::env::temp_dir().join(format!("wordiy_pull_isfile_{}", std::process::id()));
+        std::fs::write(&file, b"x").unwrap();
+        let args = pull_args(&["wordiy", "pull", "--path", file.to_str().unwrap()]);
+        let err = run(&ctx(), &args).expect_err("path is a file");
+        assert_eq!(err.exit_code(), 1);
+        let _ = std::fs::remove_file(&file);
     }
 
     #[test]
