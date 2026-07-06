@@ -24,6 +24,23 @@ const MAX_TOTAL_BYTES: u64 = 64 * 1024 * 1024;
 /// Upper bound on the capacity hint taken from the (untrusted) size header.
 const MAX_PREALLOC: u64 = 1024 * 1024;
 
+/// Fail if `path` already exists and is not a directory (e.g. a regular file). A path
+/// that does not exist yet is fine — it is created during extraction. Follows symlinks.
+pub fn check_path_not_a_file(path: &Path) -> Result<()> {
+    match fs::metadata(path) {
+        Ok(meta) if !meta.is_dir() => Err(CliError::Message(format!(
+            "--path {} already exists and is not a directory",
+            path.display()
+        ))),
+        Ok(_) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(CliError::Message(format!(
+            "could not inspect --path {}: {e}",
+            path.display()
+        ))),
+    }
+}
+
 /// Prepare the destination directory: if `empty`, remove it first, then ensure it
 /// exists. Without `empty`, existing files are left in place (no pruning).
 fn prepare_dir(path: &Path, empty: bool) -> Result<()> {
@@ -234,6 +251,21 @@ mod tests {
         prepare_dir(&dir, true).unwrap(); // empty → stale removed
         assert!(dir.exists());
         assert!(!dir.join("stale.txt").exists());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn check_path_accepts_missing_and_dirs_rejects_files() {
+        let dir = temp_dir("pathcheck");
+        // Missing path is fine — it gets created during extraction.
+        assert!(check_path_not_a_file(&dir).is_ok());
+        // An existing directory is fine.
+        fs::create_dir_all(&dir).unwrap();
+        assert!(check_path_not_a_file(&dir).is_ok());
+        // An existing regular file is rejected.
+        let file = dir.join("not_a_dir");
+        fs::write(&file, b"x").unwrap();
+        assert!(check_path_not_a_file(&file).is_err());
         let _ = fs::remove_dir_all(&dir);
     }
 }
