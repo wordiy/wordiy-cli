@@ -1,0 +1,62 @@
+# yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+#
+# CodeRabbit configuration for wordiy-cli (Rust).
+# Docs: https://docs.coderabbit.ai/getting-started/configure-coderabbit
+
+language: "en-US"
+
+reviews:
+  # "chill" keeps the first reviews focused; bump to "assertive" for more thorough nitpicks.
+  profile: "chill"
+  # Post review comments without formally blocking the PR (no "Request changes").
+  request_changes_workflow: false
+  high_level_summary: true
+  review_status: true
+  poem: false
+
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - "main"
+
+  # Build output is gitignored; never review it.
+  path_filters:
+    - "!**/target/**"
+
+  path_instructions:
+    - path: "**/*.rs"
+      instructions: >-
+        Review as idiomatic, modern Rust (edition 2021). Flag any `.unwrap()`,
+        `.expect()`, `panic!`, or `todo!()` in non-test code unless an invariant clearly
+        guarantees safety (and note that reasoning). Prefer returning the crate's
+        `CliError` via `Result` and the `?` operator over panicking or manual
+        match-and-return. Every behavior change should be covered by a unit test, and the
+        code must keep `cargo clippy --all-targets -- -D warnings` clean — call out
+        anything that would introduce a warning. Error handling: API errors use the typed
+        `{ code, params }` envelope mapped to `CliError`; user-facing messages must be
+        clear and actionable. The HTTP client is a thin pass-through — request building
+        maps CLI types to the wire format, and filter/combination semantics live on the
+        backend, so flag any business logic that leaks into the client. For the ZIP
+        extraction (untrusted network input), verify the whole archive is validated
+        before any file is written or any directory is emptied: a zip-slip guard via
+        `enclosed_name`, per-entry and total size caps, and rejection of empty archives.
+        Keep the CLI surface honest — do not expose flags the backend does not honor. The
+        code should read as its own project; flag references to unrelated external tools
+        or products in code or comments.
+    - path: "Cargo.toml"
+      instructions: >-
+        Flag any newly added dependency and briefly assess whether it is necessary,
+        well-maintained, and reasonably lightweight (note if it pulls a large transitive
+        tree). Prefer minimal feature sets over enabling all default features.
+
+  tools:
+    # Rust linter — run Clippy findings as part of the review.
+    clippy:
+      enabled: true
+    # Secret scanning — the repo must never contain API keys/tokens.
+    gitleaks:
+      enabled: true
+
+chat:
+  auto_reply: true
