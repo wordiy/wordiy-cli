@@ -75,16 +75,19 @@ pub trait ExportClient {
     fn export(&self, req: &ExportRequest) -> Result<Vec<u8>>;
 }
 
-/// The server's typed error envelope. Only `code` is consumed; `params` (always
-/// null for export in v1) is ignored.
+/// The server's typed error envelope: a stable `code` plus optional named `params`
+/// (e.g. `unsupported_export_format` carries `{ format, supported }`).
 #[derive(Debug, Deserialize)]
 struct ApiErrorBody {
     code: String,
+    #[serde(default)]
+    params: Option<serde_json::Value>,
 }
 
-/// Map a server error `code` to a friendly message.
-fn friendly_message(status: u16, code: &str) -> String {
+/// Map a server error `code` (and its optional `params`) to a friendly message.
+fn friendly_message(status: u16, code: &str, params: Option<&serde_json::Value>) -> String {
     match code {
+        "unsupported_export_format" => unsupported_format_message(params),
         "request_parse_error" => {
             "the export request was rejected — check the format and parameters".to_string()
         }
@@ -96,6 +99,27 @@ fn friendly_message(status: u16, code: &str) -> String {
         }
         "project_not_found" => "no project is associated with this API key".to_string(),
         other => format!("export failed (HTTP {status}): {other}"),
+    }
+}
+
+/// Message for `unsupported_export_format`, surfacing the offending `format` and the
+/// set the server supports from `params: { format, supported }`. This normally means
+/// the CLI's known formats have drifted ahead of the backend's.
+fn unsupported_format_message(params: Option<&serde_json::Value>) -> String {
+    let format = params.and_then(|p| p.get("format")).and_then(|v| v.as_str());
+    let supported = params
+        .and_then(|p| p.get("supported"))
+        .and_then(|v| v.as_array())
+        .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(", "))
+        .filter(|s| !s.is_empty());
+
+    let base = match format {
+        Some(f) => format!("the server does not support export format '{f}'"),
+        None => "no supported export format was provided".to_string(),
+    };
+    match supported {
+        Some(s) => format!("{base} (the server supports: {s})"),
+        None => base,
     }
 }
 
@@ -152,14 +176,14 @@ impl ExportClient for HttpExportClient {
             // 4xx/5xx with a body: parse the typed envelope.
             Err(ureq::Error::Status(status, resp)) => {
                 let body = resp.into_string().unwrap_or_default();
-                let code = serde_json::from_str::<ApiErrorBody>(&body)
-                    .map(|e| e.code)
-                    .unwrap_or_else(|_| "unknown_error".to_string());
-                Err(CliError::Api {
-                    status,
-                    message: friendly_message(status, &code),
-                    code,
-                })
+                let parsed = serde_json::from_str::<ApiErrorBody>(&body).ok();
+                let code = parsed
+                    .as_ref()
+                    .map(|e| e.code.clone())
+                    .unwrap_or_else(|| "unknown_error".to_string());
+                let message =
+                    friendly_message(status, &code, parsed.as_ref().and_then(|e| e.params.as_ref()));
+                Err(CliError::Api { status, code, message })
             }
             Err(ureq::Error::Transport(t)) => Err(CliError::Transport(t.to_string())),
         }
@@ -235,10 +259,28 @@ mod tests {
 
     #[test]
     fn maps_known_codes_to_friendly_messages() {
-        assert!(friendly_message(401, "invalid_api_key").contains("invalid"));
-        assert!(friendly_message(400, "no_exported_result").contains("no translations"));
+        assert!(friendly_message(401, "invalid_api_key", None).contains("invalid"));
+        assert!(friendly_message(400, "no_exported_result", None).contains("no translations"));
         // Unknown codes fall back to a generic message that keeps the code.
-        assert!(friendly_message(400, "weird_new_code").contains("weird_new_code"));
+        assert!(friendly_message(400, "weird_new_code", None).contains("weird_new_code"));
+    }
+
+    #[test]
+    fn unsupported_format_message_surfaces_offending_format_and_supported_set() {
+        // The exact params shape the backend returns for a bad exportFormat.
+        let params = serde_json::json!({ "format": "JSON_ICU", "supported": ["ANDROID_XML"] });
+        let msg = friendly_message(400, "unsupported_export_format", Some(&params));
+        assert!(msg.contains("JSON_ICU"), "names the offending format: {msg}");
+        assert!(msg.contains("ANDROID_XML"), "lists the supported set: {msg}");
+    }
+
+    #[test]
+    fn unsupported_format_message_handles_missing_format_and_no_params() {
+        // Missing exportFormat → format is null; still mention what's supported.
+        let params = serde_json::json!({ "format": null, "supported": ["ANDROID_XML"] });
+        assert!(friendly_message(400, "unsupported_export_format", Some(&params)).contains("ANDROID_XML"));
+        // No params at all → still a sensible, non-panicking message.
+        assert!(friendly_message(400, "unsupported_export_format", None).contains("format"));
     }
 
     #[test]
