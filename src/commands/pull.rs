@@ -13,7 +13,7 @@ use crate::client::{ExportClient, ExportQuery, ExportRequest, HttpExportClient};
 use crate::config::{LoadedConfig, PullConfig};
 use crate::context::Context;
 use crate::error::{fail, CliError, Result};
-use crate::extract::extract_zip;
+use crate::extract::{check_path_not_a_file, extract_zip};
 
 /// Pull options after merging CLI flags over the config file over defaults.
 struct ResolvedPull {
@@ -29,6 +29,7 @@ struct ResolvedPull {
 
 pub fn run(ctx: &Context, args: &PullArgs, loaded: &LoadedConfig) -> Result<()> {
     let resolved = resolve(args, &loaded.config.pull, &loaded.dir)?;
+    check_path_not_a_file(&resolved.path)?;
 
     let Some(api_key) = ctx.api_key.clone() else {
         return fail("Missing API key: pass --api-key or set WORDIY_API_KEY");
@@ -169,6 +170,16 @@ mod tests {
         let args = pull_args(&["wordiy", "pull", "--path", "./i18n"]);
         let err = run(&ctx(), &args, &empty_loaded()).unwrap_err();
         assert_eq!(err.exit_code(), 1);
+    }
+
+    #[test]
+    fn errors_when_path_is_an_existing_file() {
+        let file = std::env::temp_dir().join(format!("wordiy_pull_isfile_{}", std::process::id()));
+        std::fs::write(&file, b"x").unwrap();
+        let args = pull_args(&["wordiy", "pull", "--path", file.to_str().unwrap()]);
+        let err = run(&ctx(), &args, &empty_loaded()).expect_err("path is a file");
+        assert_eq!(err.exit_code(), 1);
+        let _ = std::fs::remove_file(&file);
     }
 
     #[test]
