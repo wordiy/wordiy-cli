@@ -1,0 +1,52 @@
+# wordiy CLI configuration — example.
+#
+# Copy this file to `.wordiyrc.toml` (or `.wordiyrc`) at your project root and edit it.
+# The CLI searches for it from the current directory up the parent tree; `--config <path>`
+# loads an exact file instead.
+#
+# Every value is optional and can be overridden per run.
+# [pull] settings merge as:  CLI flag  >  this config file  >  built-in default.
+# The auth settings (apiUrl, apiKey) also honor env vars — WORDIY_API_URL and
+# WORDIY_API_KEY — which rank just under the CLI flag.
+#
+# Keys are camelCase. Unknown keys are rejected (so typos surface as errors).
+
+# API base URL. Omit to use the built-in default.
+# apiUrl = "https://app.wordiy.dev"
+
+# API key for the project (e.g. a `srv_` server key).
+# Prefer the WORDIY_API_KEY environment variable. If you set it here, do NOT commit the
+# file — add `.wordiyrc.toml` to your .gitignore.
+# apiKey = "srv_your_key_here"
+
+[pull]
+# Destination directory for the exported files. A relative path resolves against the
+# directory containing this config file.
+path = "./app/src/main/res"
+
+# Export format. Only ANDROID_XML is supported today. Default: ANDROID_XML.
+# format = "ANDROID_XML"
+
+# Languages to export, as BCP-47 tags. Omit to export all languages.
+# languages = ["en", "ar"]
+
+# Translation states to include — any of: UNTRANSLATED, TRANSLATED, REVIEWED, DISABLED.
+# Omit for the server default (TRANSLATED + REVIEWED).
+# states = ["TRANSLATED", "REVIEWED"]
+
+# Only export keys carrying at least one of these tags (matched by name,
+# case-insensitive). Omit to include all keys.
+# tags = ["mobile", "checkout"]
+
+# Exclude keys carrying any of these tags (matched by name, case-insensitive).
+# Exclusion wins: a key with both an included and an excluded tag is excluded.
+# excludeTags = ["legacy"]
+
+# Only export keys whose name starts with this prefix — anchored, case-sensitive, and
+# literal (`_` / `%` are NOT wildcards; the namespace is not matched).
+# keyPrefix = "home_"
+
+# Empty the destination directory before extracting. DESTRUCTIVE: it removes the
+# existing contents of `path`. Default: false. Override per run with the
+# `--empty-dir` / `--no-empty-dir` flags.
+# emptyDir = false

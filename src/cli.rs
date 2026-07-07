@@ -126,13 +126,17 @@ pub struct PullArgs {
     #[arg(long = "key-prefix")]
     pub key_prefix: Option<String>,
 
-    /// Export format.
-    #[arg(long, default_value = "ANDROID_XML")]
-    pub format: Format,
+    /// Export format [default: ANDROID_XML].
+    #[arg(long)]
+    pub format: Option<Format>,
 
     /// Empty the destination directory before extracting (destructive).
-    #[arg(long = "empty-dir")]
+    #[arg(long = "empty-dir", overrides_with = "no_empty_dir")]
     pub empty_dir: bool,
+
+    /// Do not empty the destination directory (overrides `emptyDir` from the config).
+    #[arg(long = "no-empty-dir", overrides_with = "empty_dir")]
+    pub no_empty_dir: bool,
 }
 
 #[cfg(test)]
@@ -154,7 +158,7 @@ mod tests {
 
         let Command::Pull(args) = cli.command;
         assert_eq!(args.path.as_deref(), Some(std::path::Path::new("./i18n")));
-        assert_eq!(args.format, Format::AndroidXml); // default
+        assert_eq!(args.format, None); // unset on the CLI → resolved later (default ANDROID_XML)
         assert!(!args.empty_dir);
     }
 
@@ -173,7 +177,7 @@ mod tests {
         assert_eq!(args.tags, vec!["checkout"]);
         assert_eq!(args.exclude_tags, vec!["legacy"]);
         assert_eq!(args.key_prefix.as_deref(), Some("home_"));
-        assert_eq!(args.format, Format::AndroidXml);
+        assert_eq!(args.format, Some(Format::AndroidXml));
         assert!(args.empty_dir);
     }
 
@@ -181,5 +185,14 @@ mod tests {
     fn rejects_unsupported_format() {
         // Only ANDROID_XML is accepted in v1.
         assert!(Cli::try_parse_from(["wordiy", "pull", "--format", "JSON_ICU"]).is_err());
+    }
+
+    #[test]
+    fn empty_dir_negation_parses() {
+        let Command::Pull(args) = Cli::try_parse_from(["wordiy", "pull", "--no-empty-dir"])
+            .expect("should parse")
+            .command;
+        assert!(args.no_empty_dir);
+        assert!(!args.empty_dir);
     }
 }
