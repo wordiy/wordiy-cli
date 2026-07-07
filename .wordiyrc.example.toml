@@ -47,5 +47,6 @@ path = "./app/src/main/res"
 # keyPrefix = "home_"
 
 # Empty the destination directory before extracting. DESTRUCTIVE: it removes the
-# existing contents of `path`. Default: false.
+# existing contents of `path`. Default: false. Override per run with the
+# `--empty-dir` / `--no-empty-dir` flags.
 # emptyDir = false

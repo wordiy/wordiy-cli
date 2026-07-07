@@ -131,8 +131,12 @@ pub struct PullArgs {
     pub format: Option<Format>,
 
     /// Empty the destination directory before extracting (destructive).
-    #[arg(long = "empty-dir")]
+    #[arg(long = "empty-dir", overrides_with = "no_empty_dir")]
     pub empty_dir: bool,
+
+    /// Do not empty the destination directory (overrides `emptyDir` from the config).
+    #[arg(long = "no-empty-dir", overrides_with = "empty_dir")]
+    pub no_empty_dir: bool,
 }
 
 #[cfg(test)]
@@ -181,5 +185,14 @@ mod tests {
     fn rejects_unsupported_format() {
         // Only ANDROID_XML is accepted in v1.
         assert!(Cli::try_parse_from(["wordiy", "pull", "--format", "JSON_ICU"]).is_err());
+    }
+
+    #[test]
+    fn empty_dir_negation_parses() {
+        let Command::Pull(args) = Cli::try_parse_from(["wordiy", "pull", "--no-empty-dir"])
+            .expect("should parse")
+            .command;
+        assert!(args.no_empty_dir);
+        assert!(!args.empty_dir);
     }
 }

@@ -70,6 +70,15 @@ fn resolve(args: &PullArgs, cfg: &PullConfig, config_dir: &Path) -> Result<Resol
         args.states.clone()
     };
 
+    // Tri-state so the CLI can force empty-dir on OR off, overriding the config.
+    let empty_dir = if args.no_empty_dir {
+        false
+    } else if args.empty_dir {
+        true
+    } else {
+        cfg.empty_dir.unwrap_or(false)
+    };
+
     Ok(ResolvedPull {
         path,
         format,
@@ -78,7 +87,7 @@ fn resolve(args: &PullArgs, cfg: &PullConfig, config_dir: &Path) -> Result<Resol
         tags: pick(&args.tags, cfg.tags.as_deref()),
         exclude_tags: pick(&args.exclude_tags, cfg.exclude_tags.as_deref()),
         key_prefix: args.key_prefix.clone().or_else(|| cfg.key_prefix.clone()),
-        empty_dir: args.empty_dir || cfg.empty_dir.unwrap_or(false),
+        empty_dir,
     })
 }
 
@@ -215,6 +224,29 @@ mod tests {
 
         assert_eq!(resolved.path, PathBuf::from("/abs"));
         assert_eq!(resolved.tags, vec!["checkout"]);
+    }
+
+    #[test]
+    fn empty_dir_cli_overrides_config() {
+        let on = PullConfig {
+            path: Some(PathBuf::from("res")),
+            empty_dir: Some(true),
+            ..Default::default()
+        };
+        // config alone → true
+        let r = resolve(&pull_args(&["wordiy", "pull"]), &on, Path::new("/b")).unwrap();
+        assert!(r.empty_dir);
+        // --no-empty-dir turns a config `true` back off
+        let r = resolve(&pull_args(&["wordiy", "pull", "--no-empty-dir"]), &on, Path::new("/b")).unwrap();
+        assert!(!r.empty_dir);
+        // --empty-dir forces it on even when config is false
+        let off = PullConfig {
+            path: Some(PathBuf::from("res")),
+            empty_dir: Some(false),
+            ..Default::default()
+        };
+        let r = resolve(&pull_args(&["wordiy", "pull", "--empty-dir"]), &off, Path::new("/b")).unwrap();
+        assert!(r.empty_dir);
     }
 
     #[test]
