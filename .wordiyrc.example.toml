@@ -4,8 +4,10 @@
 # The CLI searches for it from the current directory up the parent tree; `--config <path>`
 # loads an exact file instead.
 #
-# Every value is optional and can be overridden per run. Precedence, highest first:
-#   CLI flag  >  environment variable  >  this config file  >  built-in default
+# Every value is optional and can be overridden per run.
+# [pull] settings merge as:  CLI flag  >  this config file  >  built-in default.
+# The auth settings (apiUrl, apiKey) also honor env vars — WORDIY_API_URL and
+# WORDIY_API_KEY — which rank just under the CLI flag.
 #
 # Keys are camelCase. Unknown keys are rejected (so typos surface as errors).
 
