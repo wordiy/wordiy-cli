@@ -126,9 +126,9 @@ pub struct PullArgs {
     #[arg(long = "key-prefix")]
     pub key_prefix: Option<String>,
 
-    /// Export format.
-    #[arg(long, default_value = "ANDROID_XML")]
-    pub format: Format,
+    /// Export format [default: ANDROID_XML].
+    #[arg(long)]
+    pub format: Option<Format>,
 
     /// Empty the destination directory before extracting (destructive).
     #[arg(long = "empty-dir")]
@@ -154,7 +154,7 @@ mod tests {
 
         let Command::Pull(args) = cli.command;
         assert_eq!(args.path.as_deref(), Some(std::path::Path::new("./i18n")));
-        assert_eq!(args.format, Format::AndroidXml); // default
+        assert_eq!(args.format, None); // unset on the CLI → resolved later (default ANDROID_XML)
         assert!(!args.empty_dir);
     }
 
@@ -173,7 +173,7 @@ mod tests {
         assert_eq!(args.tags, vec!["checkout"]);
         assert_eq!(args.exclude_tags, vec!["legacy"]);
         assert_eq!(args.key_prefix.as_deref(), Some("home_"));
-        assert_eq!(args.format, Format::AndroidXml);
+        assert_eq!(args.format, Some(Format::AndroidXml));
         assert!(args.empty_dir);
     }
 

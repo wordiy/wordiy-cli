@@ -7,6 +7,7 @@
 mod cli;
 mod client;
 mod commands;
+mod config;
 mod context;
 mod error;
 mod extract;
@@ -35,11 +36,10 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: Cli) -> error::Result<()> {
-    // The full Context (config file + resolved credentials + HTTP client) is built
-    // in later steps; for now it carries the global flags only.
-    let ctx = Context::from_global(&cli.global);
+    let loaded = config::load(cli.global.config.as_deref())?;
+    let ctx = Context::from_global(&cli.global, &loaded.config);
 
     match cli.command {
-        Command::Pull(args) => commands::pull::run(&ctx, &args),
+        Command::Pull(args) => commands::pull::run(&ctx, &args, &loaded),
     }
 }

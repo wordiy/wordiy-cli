@@ -1,45 +1,113 @@
 //! `wordiy pull` — download translations into a local directory.
 //!
-//! Resolves the destination + API key, fetches the export ZIP via an
-//! [`ExportClient`], and extracts its files into `--path`.
+//! Resolves the destination + filters (a CLI flag overrides the config file, which
+//! overrides the built-in default), fetches the export ZIP via an [`ExportClient`],
+//! and extracts its files into the destination.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use crate::cli::PullArgs;
+use clap::ValueEnum;
+
+use crate::cli::{Format, PullArgs, State};
 use crate::client::{ExportClient, ExportQuery, ExportRequest, HttpExportClient};
+use crate::config::{LoadedConfig, PullConfig};
 use crate::context::Context;
-use crate::error::{fail, Result};
+use crate::error::{fail, CliError, Result};
 use crate::extract::extract_zip;
 
-pub fn run(ctx: &Context, args: &PullArgs) -> Result<()> {
-    // A destination is mandatory. Once config loading exists this also accepts
-    // `pull.path` from the config file.
-    let Some(path) = args.path.as_deref() else {
-        return fail("Missing --path: no destination directory was provided");
-    };
+/// Pull options after merging CLI flags over the config file over defaults.
+struct ResolvedPull {
+    path: PathBuf,
+    format: Format,
+    languages: Vec<String>,
+    states: Vec<State>,
+    tags: Vec<String>,
+    exclude_tags: Vec<String>,
+    key_prefix: Option<String>,
+    empty_dir: bool,
+}
+
+pub fn run(ctx: &Context, args: &PullArgs, loaded: &LoadedConfig) -> Result<()> {
+    let resolved = resolve(args, &loaded.config.pull, &loaded.dir)?;
 
     let Some(api_key) = ctx.api_key.clone() else {
         return fail("Missing API key: pass --api-key or set WORDIY_API_KEY");
     };
 
     let client = HttpExportClient::new(ctx.api_url.clone(), api_key, ctx.verbose);
-    pull_into(args, path, &client)
+    pull_into(&resolved, &client)
 }
 
-/// Fetch + extract. Split from [`run`] so it can be unit-tested with a fake
-/// [`ExportClient`] (no network).
-fn pull_into(args: &PullArgs, path: &Path, client: &dyn ExportClient) -> Result<()> {
+/// Merge CLI flags (highest priority) with the config file, then defaults. A relative
+/// `pull.path` from the config resolves against the config file's directory.
+fn resolve(args: &PullArgs, cfg: &PullConfig, config_dir: &Path) -> Result<ResolvedPull> {
+    let path = match &args.path {
+        Some(p) => p.clone(),
+        None => match &cfg.path {
+            Some(p) if p.is_absolute() => p.clone(),
+            Some(p) => config_dir.join(p),
+            None => return fail("Missing --path: pass --path or set pull.path in the config"),
+        },
+    };
+
+    let format = match args.format {
+        Some(f) => f,
+        None => match &cfg.format {
+            Some(s) => parse_enum::<Format>(s, "pull.format")?,
+            None => Format::default(),
+        },
+    };
+
+    let states = if args.states.is_empty() {
+        cfg.states
+            .as_deref()
+            .unwrap_or(&[])
+            .iter()
+            .map(|s| parse_enum::<State>(s, "pull.states"))
+            .collect::<Result<Vec<_>>>()?
+    } else {
+        args.states.clone()
+    };
+
+    Ok(ResolvedPull {
+        path,
+        format,
+        languages: pick(&args.languages, cfg.languages.as_deref()),
+        states,
+        tags: pick(&args.tags, cfg.tags.as_deref()),
+        exclude_tags: pick(&args.exclude_tags, cfg.exclude_tags.as_deref()),
+        key_prefix: args.key_prefix.clone().or_else(|| cfg.key_prefix.clone()),
+        empty_dir: args.empty_dir || cfg.empty_dir.unwrap_or(false),
+    })
+}
+
+/// The CLI list wins when non-empty; otherwise fall back to the config list (or empty).
+fn pick(cli: &[String], cfg: Option<&[String]>) -> Vec<String> {
+    if cli.is_empty() {
+        cfg.unwrap_or(&[]).to_vec()
+    } else {
+        cli.to_vec()
+    }
+}
+
+/// Parse a config string into a CLI value enum, reusing clap's accepted values.
+fn parse_enum<T: ValueEnum>(value: &str, field: &str) -> Result<T> {
+    T::from_str(value, false)
+        .map_err(|_| CliError::Message(format!("invalid {field} value in config: '{value}'")))
+}
+
+fn pull_into(resolved: &ResolvedPull, client: &dyn ExportClient) -> Result<()> {
     let req = ExportRequest::new(ExportQuery {
-        format: args.format,
-        languages: &args.languages,
-        states: &args.states,
-        tags: &args.tags,
-        exclude_tags: &args.exclude_tags,
-        key_prefix: args.key_prefix.as_deref(),
+        format: resolved.format,
+        languages: &resolved.languages,
+        states: &resolved.states,
+        tags: &resolved.tags,
+        exclude_tags: &resolved.exclude_tags,
+        key_prefix: resolved.key_prefix.as_deref(),
     });
     let bytes = client.export(&req)?;
-    let count = extract_zip(&bytes, path, args.empty_dir)?;
-    println!("Pulled {count} file(s) into {}", path.display());
+    let count = extract_zip(&bytes, &resolved.path, resolved.empty_dir)?;
+    println!("Pulled {count} file(s) into {}", resolved.path.display());
     Ok(())
 }
 
@@ -47,6 +115,7 @@ fn pull_into(args: &PullArgs, path: &Path, client: &dyn ExportClient) -> Result<
 mod tests {
     use super::*;
     use crate::cli::{Cli, Command};
+    use crate::config::{Config, LoadedConfig};
     use clap::Parser;
     use std::io::{Cursor, Write};
 
@@ -63,7 +132,13 @@ mod tests {
         args
     }
 
-    /// Returns canned ZIP bytes without any network access.
+    fn empty_loaded() -> LoadedConfig {
+        LoadedConfig {
+            config: Config::default(),
+            dir: PathBuf::from("."),
+        }
+    }
+
     struct FakeClient(Vec<u8>);
     impl ExportClient for FakeClient {
         fn export(&self, _req: &ExportRequest) -> Result<Vec<u8>> {
@@ -84,26 +159,80 @@ mod tests {
     }
 
     #[test]
-    fn errors_when_path_is_missing() {
-        let err = run(&ctx(), &pull_args(&["wordiy", "pull"])).expect_err("needs a path");
+    fn errors_when_no_path_from_flag_or_config() {
+        let err = run(&ctx(), &pull_args(&["wordiy", "pull"]), &empty_loaded()).unwrap_err();
         assert_eq!(err.exit_code(), 1);
     }
 
     #[test]
     fn errors_when_api_key_is_missing() {
         let args = pull_args(&["wordiy", "pull", "--path", "./i18n"]);
-        let err = run(&ctx(), &args).expect_err("needs a key");
+        let err = run(&ctx(), &args, &empty_loaded()).unwrap_err();
         assert_eq!(err.exit_code(), 1);
     }
 
     #[test]
-    fn pull_into_writes_files_with_a_fake_client() {
-        let fake = FakeClient(one_file_zip("values/strings.xml", b"<resources/>"));
-        let args = pull_args(&["wordiy", "pull"]);
-        let dir = std::env::temp_dir().join(format!("wordiy_pull_{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+    fn config_fills_path_and_filters_when_flags_omitted() {
+        let cfg = PullConfig {
+            path: Some(PathBuf::from("res")),
+            tags: Some(vec!["mobile".into()]),
+            states: Some(vec!["REVIEWED".into()]),
+            ..Default::default()
+        };
+        let resolved = resolve(&pull_args(&["wordiy", "pull"]), &cfg, Path::new("/base")).unwrap();
 
-        pull_into(&args, &dir, &fake).expect("should pull");
+        // Relative config path resolves against the config's directory.
+        assert_eq!(resolved.path, PathBuf::from("/base/res"));
+        assert_eq!(resolved.tags, vec!["mobile"]);
+        assert_eq!(resolved.states, vec![State::Reviewed]);
+        assert_eq!(resolved.format, Format::AndroidXml); // default
+    }
+
+    #[test]
+    fn cli_flags_override_config() {
+        let cfg = PullConfig {
+            path: Some(PathBuf::from("res")),
+            tags: Some(vec!["mobile".into()]),
+            ..Default::default()
+        };
+        let resolved = resolve(
+            &pull_args(&["wordiy", "pull", "--path", "/abs", "-t", "checkout"]),
+            &cfg,
+            Path::new("/base"),
+        )
+        .unwrap();
+
+        assert_eq!(resolved.path, PathBuf::from("/abs"));
+        assert_eq!(resolved.tags, vec!["checkout"]);
+    }
+
+    #[test]
+    fn invalid_config_enum_is_rejected() {
+        let cfg = PullConfig {
+            path: Some(PathBuf::from("res")),
+            states: Some(vec!["NONSENSE".into()]),
+            ..Default::default()
+        };
+        assert!(resolve(&pull_args(&["wordiy", "pull"]), &cfg, Path::new("/base")).is_err());
+    }
+
+    #[test]
+    fn pull_into_writes_files_with_a_fake_client() {
+        let dir = std::env::temp_dir().join(format!("wordiy_pull_cfg_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let resolved = ResolvedPull {
+            path: dir.clone(),
+            format: Format::AndroidXml,
+            languages: vec![],
+            states: vec![],
+            tags: vec![],
+            exclude_tags: vec![],
+            key_prefix: None,
+            empty_dir: false,
+        };
+        let fake = FakeClient(one_file_zip("values/strings.xml", b"<resources/>"));
+
+        pull_into(&resolved, &fake).expect("should pull");
 
         assert!(dir.join("values/strings.xml").exists());
         let _ = std::fs::remove_dir_all(&dir);
