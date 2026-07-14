@@ -63,7 +63,8 @@ pub struct InitArgs {
     pub force: bool,
 }
 
-/// Export container format. v1 supports Android resources XML and Apple `.strings`.
+/// Export container format. v1 supports Android resources XML and Apple `.strings`
+/// (plus `.stringsdict` for plural keys).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, ValueEnum)]
 pub enum Format {
     #[default]
