@@ -1,8 +1,7 @@
-# wordiy CLI configuration — example.
+# wordiy CLI configuration.
 #
-# Copy this file to `.wordiyrc.toml` (or `.wordiyrc`) at your project root and edit it.
-# The CLI searches for it from the current directory up the parent tree; `--config <path>`
-# loads an exact file instead.
+# The CLI discovers this file from the current directory up the parent tree;
+# `--config <path>` loads an exact file instead. Run `wordiy init` to generate a copy.
 #
 # Every value is optional and can be overridden per run.
 # [pull] settings merge as:  CLI flag  >  this config file  >  built-in default.

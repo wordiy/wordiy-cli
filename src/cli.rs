@@ -51,6 +51,16 @@ pub struct GlobalArgs {
 pub enum Command {
     /// Download translations from wordiy into a local directory.
     Pull(PullArgs),
+    /// Write a starter `.wordiyrc.toml` config file in the current directory.
+    Init(InitArgs),
+}
+
+/// Arguments for `wordiy init`.
+#[derive(Debug, Args)]
+pub struct InitArgs {
+    /// Overwrite an existing `.wordiyrc.toml`.
+    #[arg(long, short = 'f')]
+    pub force: bool,
 }
 
 /// Export container format. v1 supports Android resources XML only.
@@ -156,7 +166,7 @@ mod tests {
 
         assert_eq!(cli.global.api_key.as_deref(), Some("srv_x"));
 
-        let Command::Pull(args) = cli.command;
+        let Command::Pull(args) = cli.command else { panic!("expected a pull command") };
         assert_eq!(args.path.as_deref(), Some(std::path::Path::new("./i18n")));
         assert_eq!(args.format, None); // unset on the CLI → resolved later (default ANDROID_XML)
         assert!(!args.empty_dir);
@@ -171,7 +181,7 @@ mod tests {
         ])
         .expect("should parse");
 
-        let Command::Pull(args) = cli.command;
+        let Command::Pull(args) = cli.command else { panic!("expected a pull command") };
         assert_eq!(args.languages, vec!["en", "ar"]);
         assert_eq!(args.states, vec![State::Translated, State::Reviewed]);
         assert_eq!(args.tags, vec!["checkout"]);
@@ -191,7 +201,10 @@ mod tests {
     fn empty_dir_negation_parses() {
         let Command::Pull(args) = Cli::try_parse_from(["wordiy", "pull", "--no-empty-dir"])
             .expect("should parse")
-            .command;
+            .command
+        else {
+            panic!("expected a pull command")
+        };
         assert!(args.no_empty_dir);
         assert!(!args.empty_dir);
     }

@@ -36,10 +36,14 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: Cli) -> error::Result<()> {
-    let loaded = config::load(cli.global.config.as_deref())?;
-    let ctx = Context::from_global(&cli.global, &loaded.config);
-
     match cli.command {
-        Command::Pull(args) => commands::pull::run(&ctx, &args, &loaded),
+        Command::Pull(args) => {
+            // `pull` needs config + credentials; loading here (not for `init`) also lets
+            // `init` regenerate a config file that is currently broken.
+            let loaded = config::load(cli.global.config.as_deref())?;
+            let ctx = Context::from_global(&cli.global, &loaded.config);
+            commands::pull::run(&ctx, &args, &loaded)
+        }
+        Command::Init(args) => commands::init::run(&args),
     }
 }
