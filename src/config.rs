@@ -115,7 +115,7 @@ mod tests {
     #[test]
     fn parses_a_full_config() {
         let toml = r#"
-            apiUrl = "https://app.wordiy.dev"
+            apiUrl = "https://www.wordiy.dev"
             apiKey = "srv_x"
 
             [pull]
@@ -129,7 +129,7 @@ mod tests {
             emptyDir = true
         "#;
         let c: Config = toml::from_str(toml).unwrap();
-        assert_eq!(c.api_url.as_deref(), Some("https://app.wordiy.dev"));
+        assert_eq!(c.api_url.as_deref(), Some("https://www.wordiy.dev"));
         assert_eq!(c.api_key.as_deref(), Some("srv_x"));
         assert_eq!(c.pull.path.as_deref(), Some(Path::new("res")));
         assert_eq!(c.pull.format.as_deref(), Some("ANDROID_XML"));

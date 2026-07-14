@@ -12,7 +12,7 @@
 # Keys are camelCase. Unknown keys are rejected (so typos surface as errors).
 
 # API base URL. Omit to use the built-in default.
-# apiUrl = "https://app.wordiy.dev"
+# apiUrl = "https://www.wordiy.dev"
 
 # API key for the project (e.g. a `srv_` server key).
 # Prefer the WORDIY_API_KEY environment variable. If you set it here, do NOT commit the
