@@ -63,12 +63,15 @@ pub struct InitArgs {
     pub force: bool,
 }
 
-/// Export container format. v1 supports Android resources XML only.
+/// Export container format. v1 supports Android resources XML and Apple `.strings`
+/// (plus `.stringsdict` for plural keys).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, ValueEnum)]
 pub enum Format {
     #[default]
     #[value(name = "ANDROID_XML")]
     AndroidXml,
+    #[value(name = "APPLE_STRINGS")]
+    AppleStrings,
 }
 
 impl Format {
@@ -76,6 +79,7 @@ impl Format {
     pub fn as_wire(self) -> &'static str {
         match self {
             Format::AndroidXml => "ANDROID_XML",
+            Format::AppleStrings => "APPLE_STRINGS",
         }
     }
 }
@@ -193,8 +197,20 @@ mod tests {
 
     #[test]
     fn rejects_unsupported_format() {
-        // Only ANDROID_XML is accepted in v1.
+        // Only ANDROID_XML and APPLE_STRINGS are accepted in v1.
         assert!(Cli::try_parse_from(["wordiy", "pull", "--format", "JSON_ICU"]).is_err());
+    }
+
+    #[test]
+    fn parses_apple_strings_format() {
+        let Command::Pull(args) = Cli::try_parse_from(["wordiy", "pull", "--format", "APPLE_STRINGS"])
+            .expect("should parse")
+            .command
+        else {
+            panic!("expected a pull command")
+        };
+        assert_eq!(args.format, Some(Format::AppleStrings));
+        assert_eq!(Format::AppleStrings.as_wire(), "APPLE_STRINGS");
     }
 
     #[test]

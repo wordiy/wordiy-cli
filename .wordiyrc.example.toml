@@ -23,7 +23,7 @@
 # directory containing this config file.
 path = "./app/src/main/res"
 
-# Export format. Only ANDROID_XML is supported today. Default: ANDROID_XML.
+# Export format: ANDROID_XML or APPLE_STRINGS. Default: ANDROID_XML.
 # format = "ANDROID_XML"
 
 # Languages to export, as BCP-47 tags. Omit to export all languages.
