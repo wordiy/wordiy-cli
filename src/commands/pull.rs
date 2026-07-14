@@ -252,6 +252,17 @@ mod tests {
     }
 
     #[test]
+    fn config_format_apple_strings_resolves() {
+        let cfg = PullConfig {
+            path: Some(PathBuf::from("res")),
+            format: Some("APPLE_STRINGS".into()),
+            ..Default::default()
+        };
+        let resolved = resolve(&pull_args(&["wordiy", "pull"]), &cfg, Path::new("/base")).unwrap();
+        assert_eq!(resolved.format, Format::AppleStrings);
+    }
+
+    #[test]
     fn invalid_config_enum_is_rejected() {
         let cfg = PullConfig {
             path: Some(PathBuf::from("res")),
