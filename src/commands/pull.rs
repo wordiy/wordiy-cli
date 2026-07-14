@@ -138,7 +138,9 @@ mod tests {
     }
 
     fn pull_args(argv: &[&str]) -> PullArgs {
-        let Command::Pull(args) = Cli::try_parse_from(argv).expect("parses").command;
+        let Command::Pull(args) = Cli::try_parse_from(argv).expect("parses").command else {
+            panic!("expected a pull command");
+        };
         args
     }
 
