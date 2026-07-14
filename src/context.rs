@@ -9,10 +9,7 @@ use crate::cli::GlobalArgs;
 use crate::config::Config;
 
 /// Default API base URL when nothing else overrides it.
-///
-/// TODO: temporary dev default for local testing — switch to `https://app.wordiy.dev`
-/// before release.
-pub const DEFAULT_API_URL: &str = "http://localhost:3001";
+pub const DEFAULT_API_URL: &str = "https://www.wordiy.dev";
 
 #[derive(Debug)]
 pub struct Context {
@@ -76,7 +73,8 @@ mod tests {
     #[test]
     fn default_when_neither_set() {
         let ctx = Context::from_global(&globals(None, None), &Config::default());
-        assert_eq!(ctx.api_url, DEFAULT_API_URL);
+        // Pin the literal so a change to DEFAULT_API_URL is caught, not silently passed.
+        assert_eq!(ctx.api_url, "https://www.wordiy.dev");
         assert!(ctx.api_key.is_none());
     }
 }
