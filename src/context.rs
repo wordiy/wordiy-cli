@@ -73,7 +73,8 @@ mod tests {
     #[test]
     fn default_when_neither_set() {
         let ctx = Context::from_global(&globals(None, None), &Config::default());
-        assert_eq!(ctx.api_url, DEFAULT_API_URL);
+        // Pin the literal so a change to DEFAULT_API_URL is caught, not silently passed.
+        assert_eq!(ctx.api_url, "https://www.wordiy.dev");
         assert!(ctx.api_key.is_none());
     }
 }
