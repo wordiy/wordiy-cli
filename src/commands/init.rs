@@ -13,6 +13,8 @@ const TEMPLATE: &str = include_str!("../../.wordiyrc.example.toml");
 /// The file `init` creates.
 const CONFIG_FILE: &str = ".wordiyrc.toml";
 
+/// Write a starter `.wordiyrc.toml` into the current directory, refusing to overwrite
+/// an existing one unless `--force`.
 pub fn run(args: &InitArgs) -> Result<()> {
     write_config(Path::new(CONFIG_FILE), args.force)?;
     println!("Created {CONFIG_FILE} — edit it to configure your project.");
