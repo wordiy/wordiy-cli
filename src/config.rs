@@ -25,6 +25,8 @@ pub struct Config {
     pub api_key: Option<String>,
     #[serde(default)]
     pub pull: PullConfig,
+    #[serde(default)]
+    pub push: PushConfig,
 }
 
 /// The `[pull]` table.
@@ -39,6 +41,14 @@ pub struct PullConfig {
     pub exclude_tags: Option<Vec<String>>,
     pub key_prefix: Option<String>,
     pub empty_dir: Option<bool>,
+}
+
+/// The `[push]` table.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PushConfig {
+    pub path: Option<PathBuf>,
+    pub force_mode: Option<String>,
 }
 
 /// A parsed config plus the directory it was found in. Relative `pull.path` values
