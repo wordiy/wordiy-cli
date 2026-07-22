@@ -104,10 +104,19 @@ fn collect_into(root: &Path, dir: &Path, out: &mut Vec<FilePart>) -> Result<()> 
         if name.starts_with('.') || name == "__MACOSX" {
             continue;
         }
+        // Inspect the entry's own type — `file_type()` does NOT follow symlinks. Skip
+        // symlinks: one pointing at an ancestor would recurse forever, and one pointing
+        // outside `--path` would upload files we were never asked to.
+        let file_type = entry.file_type().map_err(|e| {
+            CliError::Message(format!("could not read entry type in {}: {e}", dir.display()))
+        })?;
+        if file_type.is_symlink() {
+            continue;
+        }
         let path = entry.path();
-        if path.is_dir() {
+        if file_type.is_dir() {
             collect_into(root, &path, out)?;
-        } else if path.is_file() {
+        } else if file_type.is_file() {
             let rel = path.strip_prefix(root).unwrap_or(&path);
             let posix = posix_path(rel)?;
             let valid = validate_part_path(&posix)?;
@@ -333,6 +342,31 @@ mod tests {
         let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
         assert_eq!(paths, vec!["values-ar/strings.xml", "values/strings.xml"]);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn collect_files_does_not_follow_symlinks() {
+        let dir = std::env::temp_dir().join(format!("wordiy_push_symlink_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("values")).unwrap();
+        std::fs::write(dir.join("values/strings.xml"), b"<resources/>").unwrap();
+
+        // A symlink back to an ancestor — following it would recurse forever.
+        std::os::unix::fs::symlink(&dir, dir.join("loop")).unwrap();
+        // A symlink to a file outside the tree — following it would upload it.
+        let outside =
+            std::env::temp_dir().join(format!("wordiy_push_outside_{}", std::process::id()));
+        std::fs::write(&outside, b"secret").unwrap();
+        std::os::unix::fs::symlink(&outside, dir.join("link.xml")).unwrap();
+
+        // Must terminate, and collect only the real file (both symlinks skipped).
+        let files = collect_files(&dir).unwrap();
+        let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+        assert_eq!(paths, vec!["values/strings.xml"]);
+
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_file(&outside);
     }
 
     #[test]
