@@ -53,6 +53,8 @@ pub enum Command {
     Pull(PullArgs),
     /// Write a starter `.wordiyrc.toml` config file in the current directory.
     Init(InitArgs),
+    /// Upload local resource files to wordiy (import).
+    Push(PushArgs),
 }
 
 /// Arguments for `wordiy init`.
@@ -151,6 +153,83 @@ pub struct PullArgs {
     /// Do not empty the destination directory (overrides `emptyDir` from the config).
     #[arg(long = "no-empty-dir", overrides_with = "empty_dir")]
     pub no_empty_dir: bool,
+}
+
+/// Conflict policy for `wordiy push` when a key+language already holds different text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, ValueEnum)]
+pub enum ForceMode {
+    /// Fail the whole import if any conflict exists (nothing is written).
+    #[default]
+    #[value(name = "NO_FORCE")]
+    NoForce,
+    /// Overwrite conflicting translations.
+    #[value(name = "OVERRIDE")]
+    Override,
+    /// Keep existing translations; import only the non-conflicting ones.
+    #[value(name = "KEEP")]
+    Keep,
+}
+
+impl ForceMode {
+    /// The value sent in the import `params.forceMode`.
+    pub fn as_wire(self) -> &'static str {
+        match self {
+            ForceMode::NoForce => "NO_FORCE",
+            ForceMode::Override => "OVERRIDE",
+            ForceMode::Keep => "KEEP",
+        }
+    }
+}
+
+/// Per-file import format override (the wire values the import endpoint accepts).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ImportFormat {
+    #[value(name = "ANDROID_XML")]
+    AndroidXml,
+    #[value(name = "STRINGS")]
+    Strings,
+    #[value(name = "STRINGSDICT")]
+    Stringsdict,
+}
+
+impl ImportFormat {
+    /// The value sent in `fileMappings[].format`.
+    pub fn as_wire(self) -> &'static str {
+        match self {
+            ImportFormat::AndroidXml => "ANDROID_XML",
+            ImportFormat::Strings => "STRINGS",
+            ImportFormat::Stringsdict => "STRINGSDICT",
+        }
+    }
+}
+
+/// Arguments for `wordiy push`.
+#[derive(Debug, Args)]
+pub struct PushArgs {
+    /// Directory of resource files to upload.
+    #[arg(long)]
+    pub path: Option<PathBuf>,
+
+    /// Conflict policy when a key+language already differs [default: NO_FORCE].
+    #[arg(long = "force-mode")]
+    pub force_mode: Option<ForceMode>,
+
+    /// Force the format of every uploaded file (else inferred from its extension).
+    #[arg(long)]
+    pub format: Option<ImportFormat>,
+
+    /// Force the language of every uploaded file (else inferred from its path).
+    /// Intended for single-language pushes.
+    #[arg(long, short = 'l')]
+    pub language: Option<String>,
+
+    /// Do not create keys that do not already exist.
+    #[arg(long = "no-create-new-keys")]
+    pub no_create_new_keys: bool,
+
+    /// Overwrite existing key descriptions from file comments.
+    #[arg(long = "override-descriptions")]
+    pub override_descriptions: bool,
 }
 
 #[cfg(test)]

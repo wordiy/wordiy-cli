@@ -6,11 +6,6 @@
 //! all of it lives here: strict path validation and deterministic body assembly, with
 //! the server's multipart quirks encoded once and tested hard.
 
-// TEMP WAIVER: the `push` command (next commit on this branch) is the first non-test
-// caller. Until it lands, these items are exercised only by tests, so `dead_code` would
-// fire under `-D warnings`. This allow is removed in that next commit.
-#![allow(dead_code)]
-
 use crate::error::{fail, Result};
 
 const CRLF: &str = "\r\n";

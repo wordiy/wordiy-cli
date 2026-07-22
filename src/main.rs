@@ -46,5 +46,10 @@ fn run(cli: Cli) -> error::Result<()> {
             commands::pull::run(&ctx, &args, &loaded)
         }
         Command::Init(args) => commands::init::run(&args),
+        Command::Push(args) => {
+            let loaded = config::load(cli.global.config.as_deref())?;
+            let ctx = Context::from_global(&cli.global, &loaded.config);
+            commands::push::run(&ctx, &args, &loaded)
+        }
     }
 }

@@ -49,3 +49,17 @@ path = "./app/src/main/res"
 # existing contents of `path`. Default: false. Override per run with the
 # `--empty-dir` / `--no-empty-dir` flags.
 # emptyDir = false
+
+[push]
+# Directory of resource files to upload (import). A relative path resolves against the
+# directory containing this config file.
+# path = "./app/src/main/res"
+
+# Conflict policy when a key+language already holds different text:
+#   NO_FORCE (default) — fail if any conflict exists (nothing is written)
+#   OVERRIDE           — overwrite conflicting translations
+#   KEEP               — keep existing; import only the non-conflicting ones
+# forceMode = "NO_FORCE"
+
+# The other push options are per-run CLI flags, not config keys:
+#   --format, --language, --no-create-new-keys, --override-descriptions
