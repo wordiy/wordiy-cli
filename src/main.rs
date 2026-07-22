@@ -11,6 +11,7 @@ mod config;
 mod context;
 mod error;
 mod extract;
+mod multipart;
 
 use clap::Parser;
 use std::process::ExitCode;
