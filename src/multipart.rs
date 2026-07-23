@@ -130,12 +130,14 @@ fn push(buf: &mut Vec<u8>, s: &str) {
 }
 
 /// Best-effort part content type. The server ignores it (format is detected from the
-/// path/content), but a well-formed part carries one.
+/// path/content), but a well-formed part carries one. Extension match is case-insensitive
+/// to agree with the (case-insensitive) `.zip` detection in the push command.
 fn content_type_for(path: &str) -> &'static str {
-    match path.rsplit('.').next() {
-        Some("xml") | Some("stringsdict") => "application/xml",
-        Some("strings") => "text/plain",
-        Some("zip") => "application/zip",
+    let ext = path.rsplit('.').next().unwrap_or_default().to_ascii_lowercase();
+    match ext.as_str() {
+        "xml" | "stringsdict" => "application/xml",
+        "strings" => "text/plain",
+        "zip" => "application/zip",
         _ => "application/octet-stream",
     }
 }
@@ -238,6 +240,15 @@ mod tests {
             "--BX--\r\n",
         );
         assert_eq!(String::from_utf8(body).unwrap(), expected);
+    }
+
+    #[test]
+    fn content_type_is_case_insensitive() {
+        // Must agree with the push command's case-insensitive `.zip` detection.
+        assert_eq!(content_type_for("bundle.ZIP"), "application/zip");
+        assert_eq!(content_type_for("bundle.zip"), "application/zip");
+        assert_eq!(content_type_for("values/Strings.XML"), "application/xml");
+        assert_eq!(content_type_for("a.unknown"), "application/octet-stream");
     }
 
     #[test]
