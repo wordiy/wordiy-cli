@@ -215,11 +215,12 @@ pub struct PushArgs {
     pub force_mode: Option<ForceMode>,
 
     /// Force the format of every uploaded file (else inferred from its extension).
+    /// Directory uploads only — not supported with a `.zip` archive.
     #[arg(long)]
     pub format: Option<ImportFormat>,
 
     /// Force the language of every uploaded file (else inferred from its path).
-    /// Intended for single-language pushes.
+    /// For single-language directory uploads — not supported with a `.zip` archive.
     #[arg(long, short = 'l')]
     pub language: Option<String>,
 
