@@ -34,16 +34,7 @@ pub fn run(ctx: &Context, args: &PushArgs, loaded: &LoadedConfig) -> Result<()> 
         return fail("Missing API key: pass --api-key or set WORDIY_API_KEY");
     };
 
-    // A .zip is uploaded whole and expanded server-side, so per-file overrides (which the
-    // backend keys by in-archive path) don't apply — reject them rather than send a mapping
-    // that names the archive container, which the server refuses.
-    if is_zip_archive(&resolved.path) && (resolved.format.is_some() || resolved.language.is_some()) {
-        return fail(
-            "--format / --language are not supported when pushing a .zip archive \
-             (the backend infers format and language from the in-archive paths); \
-             use them with a directory instead",
-        );
-    }
+    reject_zip_overrides(&resolved)?;
 
     let files = collect_files(&resolved.path)?;
     if files.is_empty() {
@@ -96,6 +87,20 @@ fn is_zip_archive(path: &Path) -> bool {
             .extension()
             .and_then(|e| e.to_str())
             .is_some_and(|e| e.eq_ignore_ascii_case("zip"))
+}
+
+/// Per-file `--format`/`--language` overrides don't apply to a `.zip` source: the archive is
+/// uploaded whole and expanded server-side, where mappings are keyed by in-archive path and
+/// the container itself is not mappable. Reject them for a zip; a directory accepts them.
+fn reject_zip_overrides(r: &ResolvedPush) -> Result<()> {
+    if is_zip_archive(&r.path) && (r.format.is_some() || r.language.is_some()) {
+        return fail(
+            "--format / --language are not supported when pushing a .zip archive \
+             (the backend infers format and language from the in-archive paths); \
+             use them with a directory instead",
+        );
+    }
+    Ok(())
 }
 
 /// Gather the files to upload. A directory is walked into individual `files[<relpath>]`
@@ -442,6 +447,29 @@ mod tests {
         let f = dir.join("strings.xml");
         std::fs::write(&f, b"<resources/>").unwrap();
         assert!(collect_files(&f).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn zip_source_rejects_overrides_but_directory_accepts_them() {
+        let dir = std::env::temp_dir().join(format!("wordiy_push_zipov_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let zip = dir.join("bundle.zip");
+        std::fs::write(&zip, b"PK").unwrap();
+        let (zip_s, dir_s) = (zip.to_str().unwrap(), dir.to_str().unwrap());
+
+        let check = |argv: &[&str]| reject_zip_overrides(&resolved(argv));
+
+        // A .zip rejects per-file overrides…
+        assert!(check(&["wordiy", "push", "--path", zip_s, "--format", "ANDROID_XML"]).is_err());
+        assert!(check(&["wordiy", "push", "--path", zip_s, "-l", "ar"]).is_err());
+        // …but is fine without them.
+        assert!(check(&["wordiy", "push", "--path", zip_s]).is_ok());
+        // A directory accepts the same overrides.
+        assert!(check(&["wordiy", "push", "--path", dir_s, "--format", "ANDROID_XML"]).is_ok());
+        assert!(check(&["wordiy", "push", "--path", dir_s, "-l", "ar"]).is_ok());
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 
