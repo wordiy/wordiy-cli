@@ -34,6 +34,17 @@ pub fn run(ctx: &Context, args: &PushArgs, loaded: &LoadedConfig) -> Result<()> 
         return fail("Missing API key: pass --api-key or set WORDIY_API_KEY");
     };
 
+    // A .zip is uploaded whole and expanded server-side, so per-file overrides (which the
+    // backend keys by in-archive path) don't apply — reject them rather than send a mapping
+    // that names the archive container, which the server refuses.
+    if is_zip_archive(&resolved.path) && (resolved.format.is_some() || resolved.language.is_some()) {
+        return fail(
+            "--format / --language are not supported when pushing a .zip archive \
+             (the backend infers format and language from the in-archive paths); \
+             use them with a directory instead",
+        );
+    }
+
     let files = collect_files(&resolved.path)?;
     if files.is_empty() {
         return fail(format!("no files to push under {}", resolved.path.display()));
@@ -78,20 +89,39 @@ fn resolve(args: &PushArgs, cfg: &PushConfig, config_dir: &Path) -> Result<Resol
     })
 }
 
-/// Collect every file under `root` into validated [`FilePart`]s keyed by POSIX relative
-/// path, sorted for a deterministic request. Dotfiles and macOS junk are skipped — the
-/// server hard-fails a directly-uploaded unsupported file, so we never send them.
+/// A `.zip` file (not a directory that merely ends in `.zip`).
+fn is_zip_archive(path: &Path) -> bool {
+    path.is_file()
+        && path
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| e.eq_ignore_ascii_case("zip"))
+}
+
+/// Gather the files to upload. A directory is walked into individual `files[<relpath>]`
+/// parts (dotfiles/junk skipped, symlinks not followed); a `.zip` is uploaded whole as one
+/// part and expanded server-side. The server hard-fails a directly-uploaded unsupported
+/// file, so the directory walk never sends junk.
 fn collect_files(root: &Path) -> Result<Vec<FilePart>> {
-    if !root.is_dir() {
-        return fail(format!(
-            "{} is not a directory (archive push is a follow-up)",
-            root.display()
-        ));
+    if root.is_dir() {
+        let mut files = Vec::new();
+        collect_into(root, root, &mut files)?;
+        files.sort_by(|a, b| a.path.cmp(&b.path));
+        Ok(files)
+    } else if is_zip_archive(root) {
+        let name = root
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| CliError::Message(format!("invalid archive name: {}", root.display())))?;
+        let path = validate_part_path(name)?;
+        let bytes = std::fs::read(root)
+            .map_err(|e| CliError::Message(format!("could not read {}: {e}", root.display())))?;
+        Ok(vec![FilePart { path, bytes }])
+    } else if root.exists() {
+        fail(format!("{} is not a directory or a .zip archive", root.display()))
+    } else {
+        fail(format!("{} does not exist", root.display()))
     }
-    let mut files = Vec::new();
-    collect_into(root, root, &mut files)?;
-    files.sort_by(|a, b| a.path.cmp(&b.path));
-    Ok(files)
 }
 
 fn collect_into(root: &Path, dir: &Path, out: &mut Vec<FilePart>) -> Result<()> {
@@ -367,6 +397,52 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::remove_file(&outside);
+    }
+
+    #[test]
+    fn collect_files_reads_a_zip_as_a_single_part() {
+        let dir = std::env::temp_dir().join(format!("wordiy_push_zip_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let zip = dir.join("bundle.zip");
+        std::fs::write(&zip, b"PK\x03\x04not-a-real-zip").unwrap();
+
+        // The CLI does not parse the archive (the server expands it) — bytes go up verbatim.
+        let files = collect_files(&zip).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "bundle.zip");
+        assert_eq!(files[0].bytes, b"PK\x03\x04not-a-real-zip");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn zip_archive_detection() {
+        let dir = std::env::temp_dir().join(format!("wordiy_push_zipdet_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("a.zip"), b"x").unwrap();
+        std::fs::write(dir.join("b.ZIP"), b"x").unwrap();
+        std::fs::write(dir.join("a.xml"), b"x").unwrap();
+        std::fs::create_dir_all(dir.join("nested.zip")).unwrap();
+
+        assert!(is_zip_archive(&dir.join("a.zip")));
+        assert!(is_zip_archive(&dir.join("b.ZIP")), "extension match is case-insensitive");
+        assert!(!is_zip_archive(&dir.join("a.xml")), "non-zip file");
+        assert!(!is_zip_archive(&dir.join("nested.zip")), "a directory named *.zip is not an archive");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn collect_files_rejects_a_lone_non_zip_file() {
+        let dir = std::env::temp_dir().join(format!("wordiy_push_nonzip_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("strings.xml");
+        std::fs::write(&f, b"<resources/>").unwrap();
+        assert!(collect_files(&f).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

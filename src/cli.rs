@@ -206,7 +206,7 @@ impl ImportFormat {
 /// Arguments for `wordiy push`.
 #[derive(Debug, Args)]
 pub struct PushArgs {
-    /// Directory of resource files to upload.
+    /// Directory of resource files (or a `.zip` archive) to upload.
     #[arg(long)]
     pub path: Option<PathBuf>,
 
