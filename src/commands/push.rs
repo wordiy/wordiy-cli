@@ -364,6 +364,13 @@ mod tests {
     }
 
     #[test]
+    fn params_emit_yaml_ruby_format() {
+        let r = resolved(&["wordiy", "push", "--path", "res", "--format", "YAML_RUBY"]);
+        let json = build_params(&r, &[part("en.yml")]);
+        assert!(json.contains(r#""format":"YAML_RUBY""#), "{json}");
+    }
+
+    #[test]
     fn collect_files_walks_sorted_and_skips_dotfiles() {
         let dir = std::env::temp_dir().join(format!("wordiy_push_walk_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);

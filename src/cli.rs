@@ -65,8 +65,8 @@ pub struct InitArgs {
     pub force: bool,
 }
 
-/// Export container format. v1 supports Android resources XML and Apple `.strings`
-/// (plus `.stringsdict` for plural keys).
+/// Export container format. v1 supports Android resources XML, Apple `.strings`
+/// (plus `.stringsdict` for plural keys), and Rails i18n YAML.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, ValueEnum)]
 pub enum Format {
     #[default]
@@ -74,6 +74,8 @@ pub enum Format {
     AndroidXml,
     #[value(name = "APPLE_STRINGS")]
     AppleStrings,
+    #[value(name = "YAML_RUBY")]
+    YamlRuby,
 }
 
 impl Format {
@@ -82,6 +84,7 @@ impl Format {
         match self {
             Format::AndroidXml => "ANDROID_XML",
             Format::AppleStrings => "APPLE_STRINGS",
+            Format::YamlRuby => "YAML_RUBY",
         }
     }
 }
@@ -190,6 +193,8 @@ pub enum ImportFormat {
     Strings,
     #[value(name = "STRINGSDICT")]
     Stringsdict,
+    #[value(name = "YAML_RUBY")]
+    YamlRuby,
 }
 
 impl ImportFormat {
@@ -199,6 +204,7 @@ impl ImportFormat {
             ImportFormat::AndroidXml => "ANDROID_XML",
             ImportFormat::Strings => "STRINGS",
             ImportFormat::Stringsdict => "STRINGSDICT",
+            ImportFormat::YamlRuby => "YAML_RUBY",
         }
     }
 }
@@ -277,7 +283,7 @@ mod tests {
 
     #[test]
     fn rejects_unsupported_format() {
-        // Only ANDROID_XML and APPLE_STRINGS are accepted in v1.
+        // Only ANDROID_XML, APPLE_STRINGS and YAML_RUBY are accepted in v1.
         assert!(Cli::try_parse_from(["wordiy", "pull", "--format", "JSON_ICU"]).is_err());
     }
 
@@ -291,6 +297,18 @@ mod tests {
         };
         assert_eq!(args.format, Some(Format::AppleStrings));
         assert_eq!(Format::AppleStrings.as_wire(), "APPLE_STRINGS");
+    }
+
+    #[test]
+    fn parses_yaml_ruby_format() {
+        let Command::Pull(args) = Cli::try_parse_from(["wordiy", "pull", "--format", "YAML_RUBY"])
+            .expect("should parse")
+            .command
+        else {
+            panic!("expected a pull command")
+        };
+        assert_eq!(args.format, Some(Format::YamlRuby));
+        assert_eq!(Format::YamlRuby.as_wire(), "YAML_RUBY");
     }
 
     #[test]
