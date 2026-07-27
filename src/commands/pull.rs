@@ -263,6 +263,17 @@ mod tests {
     }
 
     #[test]
+    fn config_format_yaml_ruby_resolves() {
+        let cfg = PullConfig {
+            path: Some(PathBuf::from("res")),
+            format: Some("YAML_RUBY".into()),
+            ..Default::default()
+        };
+        let resolved = resolve(&pull_args(&["wordiy", "pull"]), &cfg, Path::new("/base")).unwrap();
+        assert_eq!(resolved.format, Format::YamlRuby);
+    }
+
+    #[test]
     fn invalid_config_enum_is_rejected() {
         let cfg = PullConfig {
             path: Some(PathBuf::from("res")),

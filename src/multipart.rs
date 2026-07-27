@@ -137,6 +137,7 @@ fn content_type_for(path: &str) -> &'static str {
     match ext.as_str() {
         "xml" | "stringsdict" => "application/xml",
         "strings" => "text/plain",
+        "yml" | "yaml" => "application/yaml",
         "zip" => "application/zip",
         _ => "application/octet-stream",
     }
@@ -248,6 +249,8 @@ mod tests {
         assert_eq!(content_type_for("bundle.ZIP"), "application/zip");
         assert_eq!(content_type_for("bundle.zip"), "application/zip");
         assert_eq!(content_type_for("values/Strings.XML"), "application/xml");
+        assert_eq!(content_type_for("en.yml"), "application/yaml");
+        assert_eq!(content_type_for("en.YAML"), "application/yaml");
         assert_eq!(content_type_for("a.unknown"), "application/octet-stream");
     }
 
